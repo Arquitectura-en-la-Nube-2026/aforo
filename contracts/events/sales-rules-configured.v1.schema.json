@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aforo.dev/contracts/events/sales-rules-configured.v1.schema.json",
+  "title": "SalesRulesConfigured v1 (data)",
+  "description": "Topic aforo.catalog.sales-rules-configured. Emitted on publish and whenever rules of a published event change.",
+  "type": "object",
+  "required": ["eventId", "maxTicketsPerPerson", "reservationTtlSeconds", "openingWindowSeconds"],
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "maxTicketsPerPerson": { "type": "integer", "minimum": 1 },
+    "reservationTtlSeconds": { "type": "integer", "minimum": 30 },
+    "openingWindowSeconds": { "type": "integer", "minimum": 0 }
+  },
+  "examples": [
+    { "eventId": "8f1b2c3d-0000-4000-8000-000000000001", "maxTicketsPerPerson": 4, "reservationTtlSeconds": 480, "openingWindowSeconds": 30 }
+  ]
+}

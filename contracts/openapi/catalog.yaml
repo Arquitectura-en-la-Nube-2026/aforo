@@ -1,0 +1,213 @@
+openapi: 3.1.0
+info:
+  title: Aforo Catalog
+  version: 0.1.0-draft
+  description: |
+    Owner of events, sectors, sales window and sales rules. The only service that decides whether
+    a sale is open. Authenticated operations receive X-User-Id / X-User-Email from the Gateway.
+    Publishing writes EventPublished + SalesRulesConfigured to the outbox in the same transaction.
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: events
+paths:
+  /api/v1/events:
+    get:
+      tags: [events]
+      operationId: listEvents
+      summary: List events (public)
+      security: []
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/EventStatus" }
+        - $ref: "components/common.yaml#/components/parameters/Page"
+        - $ref: "components/common.yaml#/components/parameters/Size"
+      responses:
+        "200":
+          description: Page of events
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EventPage" }
+    post:
+      tags: [events]
+      operationId: createEvent
+      summary: Create a draft event (organizer, RF-01). Used by seed and Postman.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "components/common.yaml#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateEventRequest" }
+      responses:
+        "201":
+          description: Created in DRAFT
+          headers:
+            Idempotent-Replayed: { $ref: "components/common.yaml#/components/headers/IdempotentReplayed" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "401": { $ref: "components/common.yaml#/components/responses/Unauthenticated" }
+        "409": { $ref: "components/common.yaml#/components/responses/Conflict" }
+        "422": { $ref: "components/common.yaml#/components/responses/ValidationError" }
+  /api/v1/events/{eventId}:
+    parameters:
+      - $ref: "components/common.yaml#/components/parameters/EventId"
+    get:
+      tags: [events]
+      operationId: getEvent
+      summary: Event detail with sectors, prices, rules and computed saleState (public)
+      security: []
+      responses:
+        "200":
+          description: Event
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "404": { $ref: "components/common.yaml#/components/responses/NotFound" }
+  /api/v1/events/{eventId}/sales-rules:
+    parameters:
+      - $ref: "components/common.yaml#/components/parameters/EventId"
+    put:
+      tags: [events]
+      operationId: putSalesRules
+      summary: Configure sales rules (organizer, RF-03). If already published, emits SalesRulesConfigured.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "components/common.yaml#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SalesRules" }
+      responses:
+        "200":
+          description: Updated event
+          headers:
+            Idempotent-Replayed: { $ref: "components/common.yaml#/components/headers/IdempotentReplayed" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "401": { $ref: "components/common.yaml#/components/responses/Unauthenticated" }
+        "404": { $ref: "components/common.yaml#/components/responses/NotFound" }
+        "422": { $ref: "components/common.yaml#/components/responses/ValidationError" }
+  /api/v1/events/{eventId}/publish:
+    parameters:
+      - $ref: "components/common.yaml#/components/parameters/EventId"
+    post:
+      tags: [events]
+      operationId: publishEvent
+      summary: Publish (organizer, RF-02). 422 if sales rules are not configured.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "components/common.yaml#/components/parameters/IdempotencyKey"
+      responses:
+        "200":
+          description: Published event
+          headers:
+            Idempotent-Replayed: { $ref: "components/common.yaml#/components/headers/IdempotentReplayed" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "401": { $ref: "components/common.yaml#/components/responses/Unauthenticated" }
+        "404": { $ref: "components/common.yaml#/components/responses/NotFound" }
+        "422": { $ref: "components/common.yaml#/components/responses/ValidationError" }
+  /internal/v1/housekeeping: { $ref: "components/common.yaml#/components/pathItems/Housekeeping" }
+  /health/live: { $ref: "components/common.yaml#/components/pathItems/HealthLive" }
+  /health/ready: { $ref: "components/common.yaml#/components/pathItems/HealthReady" }
+components:
+  securitySchemes:
+    bearerAuth: { $ref: "components/common.yaml#/components/securitySchemes/bearerAuth" }
+    serviceAuth: { $ref: "components/common.yaml#/components/securitySchemes/serviceAuth" }
+  schemas:
+    EventStatus:
+      type: string
+      enum: [DRAFT, PUBLISHED]
+    SaleState:
+      type: string
+      enum: [SCHEDULED, OPEN, CLOSED]
+      description: Computed with the server clock. The frontend never compares dates itself.
+    SalesRules:
+      type: object
+      required: [maxTicketsPerPerson, reservationTtlSeconds, openingWindowSeconds]
+      additionalProperties: false
+      properties:
+        maxTicketsPerPerson: { type: integer, minimum: 1, examples: [4] }
+        reservationTtlSeconds: { type: integer, minimum: 30, examples: [480] }
+        openingWindowSeconds: { type: integer, minimum: 0, examples: [30] }
+    Sector:
+      type: object
+      required: [id, name, capacity, priceCents, currency]
+      properties:
+        id: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        name: { type: string, examples: ["General"] }
+        capacity: { type: integer, minimum: 1, examples: [500] }
+        priceCents: { $ref: "components/common.yaml#/components/schemas/Cents" }
+        currency: { $ref: "components/common.yaml#/components/schemas/Currency" }
+    Event:
+      type: object
+      required: [id, name, venue, startsAt, status, salesOpensAt, salesClosesAt, saleState, sectors]
+      properties:
+        id: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        name: { type: string }
+        venue: { type: string }
+        startsAt: { $ref: "components/common.yaml#/components/schemas/Timestamp" }
+        status: { $ref: "#/components/schemas/EventStatus" }
+        salesOpensAt: { $ref: "components/common.yaml#/components/schemas/Timestamp" }
+        salesClosesAt: { $ref: "components/common.yaml#/components/schemas/Timestamp" }
+        saleState: { $ref: "#/components/schemas/SaleState" }
+        salesRules:
+          oneOf:
+            - $ref: "#/components/schemas/SalesRules"
+            - type: "null"
+        sectors:
+          type: array
+          items: { $ref: "#/components/schemas/Sector" }
+      examples:
+        - id: 8f1b2c3d-0000-4000-8000-000000000001
+          name: Festival Estéreo 2026
+          venue: Parque Simón Bolívar
+          startsAt: "2026-11-14T22:00:00Z"
+          status: PUBLISHED
+          salesOpensAt: "2026-10-01T15:00:00Z"
+          salesClosesAt: "2026-11-14T20:00:00Z"
+          saleState: OPEN
+          salesRules: { maxTicketsPerPerson: 4, reservationTtlSeconds: 480, openingWindowSeconds: 30 }
+          sectors:
+            - id: a1a1a1a1-0000-4000-8000-000000000001
+              name: General
+              capacity: 500
+              priceCents: 18000000
+              currency: COP
+    EventPage:
+      allOf:
+        - $ref: "components/common.yaml#/components/schemas/PageMeta"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/Event" }
+    CreateEventRequest:
+      type: object
+      required: [name, venue, startsAt, salesOpensAt, salesClosesAt, sectors]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1 }
+        venue: { type: string, minLength: 1 }
+        startsAt: { $ref: "components/common.yaml#/components/schemas/Timestamp" }
+        salesOpensAt: { $ref: "components/common.yaml#/components/schemas/Timestamp" }
+        salesClosesAt: { $ref: "components/common.yaml#/components/schemas/Timestamp" }
+        sectors:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [name, capacity, priceCents]
+            additionalProperties: false
+            properties:
+              name: { type: string, minLength: 1 }
+              capacity: { type: integer, minimum: 1 }
+              priceCents: { $ref: "components/common.yaml#/components/schemas/Cents" }

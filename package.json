@@ -1,0 +1,22 @@
+{
+  "name": "aforo",
+  "private": true,
+  "description": "Aforo ticketing platform — two-week purchase happy-path prototype",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "packages/*",
+    "services/*",
+    "functions/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "lint:contracts": "make lint-contracts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.3.0"
+  }
+}

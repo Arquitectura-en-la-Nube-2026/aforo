@@ -1,0 +1,9 @@
+# Redocly lint config for contracts/openapi (used by `make lint-contracts` and CI).
+extends:
+  - recommended
+rules:
+  info-license: off              # internal APIs
+  tag-description: off
+  operation-4xx-response: off    # health checks and Pub/Sub push acks legitimately have none
+  operation-2xx-response: off    # mock completion only redirects (302)
+  no-server-example.com: off     # localhost servers until dev URLs exist

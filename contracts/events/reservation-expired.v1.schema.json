@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aforo.dev/contracts/events/reservation-expired.v1.schema.json",
+  "title": "ReservationExpired v1 (data)",
+  "description": "Topic aforo.inventory.reservation-expired. Emitted by Inventory when expire wins the race against confirm.",
+  "type": "object",
+  "required": ["reservationId", "eventId", "sectorId", "buyerId", "quantity", "expiredAt"],
+  "properties": {
+    "reservationId": { "type": "string", "format": "uuid" },
+    "eventId": { "type": "string", "format": "uuid" },
+    "sectorId": { "type": "string", "format": "uuid" },
+    "buyerId": { "type": "string", "format": "uuid" },
+    "quantity": { "type": "integer", "minimum": 1 },
+    "expiredAt": { "type": "string", "format": "date-time" }
+  }
+}
