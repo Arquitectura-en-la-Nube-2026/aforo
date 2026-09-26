@@ -1,0 +1,231 @@
+openapi: 3.1.0
+info:
+  title: Aforo Orders & Checkout
+  version: 0.1.0-draft
+  description: |
+    Owns the order and orchestrates the checkout saga. Talks to the payment gateway (the
+    mock-payment-gateway function, D-16) only through its payment adapter: timeouts, circuit
+    breaker and retry with backoff + jitter (D-18). Authenticated operations receive X-User-Id
+    from the Gateway. Publishes OrderPaid through the outbox. Consumes ReservationExpired.
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/v1/orders:
+    post:
+      tags: [orders]
+      operationId: createOrder
+      summary: Create an order and reserve seats in Inventory
+      description: |
+        If Inventory rejects, the order is not created and the same `code` and HTTP status are
+        propagated (SOLD_OUT, LIMIT_EXCEEDED, ACTIVE_RESERVATION_EXISTS, NOT_FOUND).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "components/common.yaml#/components/parameters/IdempotencyKey"
+        - $ref: "components/common.yaml#/components/parameters/QueuePass"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateOrderRequest" }
+      responses:
+        "201":
+          description: Order created, PENDING_PAYMENT
+          headers:
+            Idempotent-Replayed: { $ref: "components/common.yaml#/components/headers/IdempotentReplayed" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderCreated" }
+        "401": { $ref: "components/common.yaml#/components/responses/Unauthenticated" }
+        "404": { $ref: "components/common.yaml#/components/responses/NotFound" }
+        "409": { $ref: "components/common.yaml#/components/responses/Conflict" }
+        "422": { $ref: "components/common.yaml#/components/responses/ValidationError" }
+    get:
+      tags: [orders]
+      operationId: listMyOrders
+      summary: List the caller's orders, newest first
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "components/common.yaml#/components/parameters/Page"
+        - $ref: "components/common.yaml#/components/parameters/Size"
+      responses:
+        "200":
+          description: Page of orders
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderPage" }
+        "401": { $ref: "components/common.yaml#/components/responses/Unauthenticated" }
+  /api/v1/orders/{orderId}:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    get:
+      tags: [orders]
+      operationId: getOrder
+      summary: Order detail (only the owner). The UI polls it every 2 s while PENDING_PAYMENT.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Order
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "401": { $ref: "components/common.yaml#/components/responses/Unauthenticated" }
+        "404": { $ref: "components/common.yaml#/components/responses/NotFound" }
+  /api/v1/orders/{orderId}/payment-intents:
+    parameters:
+      - $ref: "#/components/parameters/OrderId"
+    post:
+      tags: [orders]
+      operationId: createPaymentIntent
+      summary: Start payment against the (mock) gateway; returns the checkout URL to redirect to
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "components/common.yaml#/components/parameters/IdempotencyKey"
+        - $ref: "components/common.yaml#/components/parameters/QueuePass"
+      responses:
+        "201":
+          description: Payment intent
+          headers:
+            Idempotent-Replayed: { $ref: "components/common.yaml#/components/headers/IdempotentReplayed" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentIntent" }
+        "401": { $ref: "components/common.yaml#/components/responses/Unauthenticated" }
+        "404": { $ref: "components/common.yaml#/components/responses/NotFound" }
+        "409":
+          description: RESERVATION_EXPIRED (order no longer PENDING_PAYMENT)
+          content:
+            application/problem+json:
+              schema: { $ref: "components/common.yaml#/components/schemas/Problem" }
+        "503":
+          description: PAYMENT_UNAVAILABLE — payment gateway timed out or circuit breaker is open. The buyer may retry while the reservation lives (ADR-03).
+          content:
+            application/problem+json:
+              schema: { $ref: "components/common.yaml#/components/schemas/Problem" }
+  /api/v1/payments/webhook:
+    post:
+      tags: [payments]
+      operationId: paymentWebhook
+      summary: Payment notification from the gateway (mock). Signed with HMAC over the raw body.
+      description: |
+        Processed synchronously (ADR-0002): validate the signature; if `notificationId` is
+        already in `inbox`, answer 200 at once. Otherwise confirm the reservation in Inventory,
+        then in one transaction record the `inbox` row, apply the order/payment transition and
+        write the outbox row; answer 200 after the commit. Any failure answers non-2xx so the
+        sender retries (Cloud Tasks).
+      security: [{ webhookSignature: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PaymentNotification" }
+      responses:
+        "200": { description: Processed (also for duplicates) }
+        "503":
+          description: Processing failed (e.g. Inventory unavailable); the sender must retry.
+          content:
+            application/problem+json:
+              schema: { $ref: "components/common.yaml#/components/schemas/Problem" }
+        "401":
+          description: INVALID_SIGNATURE
+          content:
+            application/problem+json:
+              schema: { $ref: "components/common.yaml#/components/schemas/Problem" }
+  /internal/v1/events/orders-reservation-expired:
+    post:
+      tags: [internal]
+      operationId: onReservationExpired
+      summary: Pub/Sub push — ReservationExpired. If the order is still PENDING_PAYMENT, it becomes EXPIRED.
+      security: [{ serviceAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "components/common.yaml#/components/schemas/PubSubPushRequest" }
+      responses:
+        "204": { $ref: "components/common.yaml#/components/responses/PushAck" }
+  /internal/v1/housekeeping: { $ref: "components/common.yaml#/components/pathItems/Housekeeping" }
+  /health/live: { $ref: "components/common.yaml#/components/pathItems/HealthLive" }
+  /health/ready: { $ref: "components/common.yaml#/components/pathItems/HealthReady" }
+components:
+  securitySchemes:
+    bearerAuth: { $ref: "components/common.yaml#/components/securitySchemes/bearerAuth" }
+    serviceAuth: { $ref: "components/common.yaml#/components/securitySchemes/serviceAuth" }
+    webhookSignature: { $ref: "components/common.yaml#/components/securitySchemes/webhookSignature" }
+  parameters:
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    OrderStatus:
+      type: string
+      enum: [PENDING_PAYMENT, PAID, EXPIRED, REFUND_PENDING]
+    CreateOrderRequest:
+      type: object
+      required: [eventId, sectorId, quantity]
+      additionalProperties: false
+      properties:
+        eventId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        sectorId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        quantity: { type: integer, minimum: 1, examples: [2] }
+    OrderCreated:
+      type: object
+      required: [orderId, status, reservationId, expiresAt, unitPriceCents, totalCents, currency]
+      properties:
+        orderId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        reservationId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        expiresAt: { $ref: "components/common.yaml#/components/schemas/Timestamp" }
+        unitPriceCents: { $ref: "components/common.yaml#/components/schemas/Cents" }
+        totalCents: { $ref: "components/common.yaml#/components/schemas/Cents" }
+        currency: { $ref: "components/common.yaml#/components/schemas/Currency" }
+      examples:
+        - orderId: c4a2c4a2-0000-4000-8000-000000000001
+          status: PENDING_PAYMENT
+          reservationId: 9d109d10-0000-4000-8000-000000000001
+          expiresAt: "2026-10-01T15:08:00Z"
+          unitPriceCents: 18000000
+          totalCents: 36000000
+          currency: COP
+    Order:
+      allOf:
+        - $ref: "#/components/schemas/OrderCreated"
+        - type: object
+          required: [eventId, sectorId, quantity, createdAt]
+          properties:
+            eventId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+            sectorId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+            quantity: { type: integer, minimum: 1 }
+            createdAt: { $ref: "components/common.yaml#/components/schemas/Timestamp" }
+            paidAt:
+              oneOf:
+                - $ref: "components/common.yaml#/components/schemas/Timestamp"
+                - type: "null"
+    OrderPage:
+      allOf:
+        - $ref: "components/common.yaml#/components/schemas/PageMeta"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/Order" }
+    PaymentIntent:
+      type: object
+      required: [paymentId, checkoutUrl, expiresAt]
+      properties:
+        paymentId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        checkoutUrl: { type: string, format: uri }
+        expiresAt: { $ref: "components/common.yaml#/components/schemas/Timestamp" }
+    PaymentNotification:
+      type: object
+      required: [notificationId, paymentId, orderId, status, occurredAt]
+      properties:
+        notificationId:
+          $ref: "components/common.yaml#/components/schemas/Uuid"
+          description: Id of this notification, used for deduplication. Named `eventId` in the Spanish plan.
+        paymentId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        orderId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        status: { type: string, enum: [APPROVED, DECLINED] }
+        occurredAt: { $ref: "components/common.yaml#/components/schemas/Timestamp" }

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aforo.dev/contracts/events/order-paid.v1.schema.json",
+  "title": "OrderPaid v1 (data)",
+  "description": "Topic aforo.orders.order-paid. Emitted by Orders in the same transaction that sets PAID. No consumer in this slice (future: ticket issuance).",
+  "type": "object",
+  "required": ["orderId", "reservationId", "paymentId", "eventId", "sectorId", "buyerId", "quantity", "totalCents", "currency", "paidAt"],
+  "properties": {
+    "orderId": { "type": "string", "format": "uuid" },
+    "reservationId": { "type": "string", "format": "uuid" },
+    "paymentId": { "type": "string", "format": "uuid" },
+    "eventId": { "type": "string", "format": "uuid" },
+    "sectorId": { "type": "string", "format": "uuid" },
+    "buyerId": { "type": "string", "format": "uuid" },
+    "quantity": { "type": "integer", "minimum": 1 },
+    "totalCents": { "type": "integer", "minimum": 0 },
+    "currency": { "const": "COP" },
+    "paidAt": { "type": "string", "format": "date-time" }
+  }
+}

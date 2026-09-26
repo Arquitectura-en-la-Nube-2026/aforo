@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aforo.dev/contracts/events/envelope.schema.json",
+  "title": "Event envelope",
+  "description": "Wrapper for every message on the bus. type and correlationId are also Pub/Sub attributes.",
+  "type": "object",
+  "required": ["messageId", "type", "version", "occurredAt", "correlationId", "producer", "data"],
+  "additionalProperties": false,
+  "properties": {
+    "messageId": { "type": "string", "format": "uuid", "description": "Deduplication key for the consumer inbox." },
+    "type": { "type": "string", "enum": ["EventPublished", "SalesRulesConfigured", "ReservationExpired", "OrderPaid"] },
+    "version": { "type": "integer", "minimum": 1 },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "correlationId": { "type": "string", "format": "uuid" },
+    "producer": { "type": "string", "enum": ["catalog", "inventory", "orders", "queue"] },
+    "data": { "type": "object", "description": "Payload; schema given by <type>.v<version>." }
+  }
+}

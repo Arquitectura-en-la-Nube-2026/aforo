@@ -1,0 +1,146 @@
+openapi: 3.1.0
+info:
+  title: Aforo Mock Payment Gateway (FaaS)
+  version: 0.1.0-draft
+  description: |
+    Cloud Run function standing in for the external payment gateway (D-16). Orders calls the
+    /payments endpoints through its payment adapter (ACL + circuit breaker). The browser reaches
+    /checkout through the Gateway under the public prefix /mock-gateway.
+    Fault injection: env FAULT_MODE = none | error | timeout, applied to POST /payments. It is a
+    Terraform switch changed only with `make fault MODE=…` (ADR-0004).
+    /webhook-dispatch answers non-2xx when Orders does, so Cloud Tasks retries the notification.
+servers:
+  - url: http://localhost:8080
+paths:
+  /payments:
+    post:
+      tags: [payments]
+      operationId: createPayment
+      summary: Create a payment for an order (called by Orders)
+      security: [{ serviceAuth: [] }]
+      parameters:
+        - $ref: "components/common.yaml#/components/parameters/IdempotencyKey"
+        - $ref: "components/common.yaml#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePaymentRequest" }
+      responses:
+        "201":
+          description: Payment created
+          headers:
+            Idempotent-Replayed: { $ref: "components/common.yaml#/components/headers/IdempotentReplayed" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+        "422": { $ref: "components/common.yaml#/components/responses/ValidationError" }
+        "503":
+          description: Injected fault (FAULT_MODE=error)
+          content:
+            application/problem+json:
+              schema: { $ref: "components/common.yaml#/components/schemas/Problem" }
+  /payments/{paymentId}/refunds:
+    parameters:
+      - $ref: "#/components/parameters/PaymentId"
+    post:
+      tags: [payments]
+      operationId: refundPayment
+      summary: Refund an approved payment (called by Orders when the reservation expired)
+      security: [{ serviceAuth: [] }]
+      parameters:
+        - $ref: "components/common.yaml#/components/parameters/IdempotencyKey"
+        - $ref: "components/common.yaml#/components/parameters/CorrelationId"
+      responses:
+        "201":
+          description: Refund recorded
+          headers:
+            Idempotent-Replayed: { $ref: "components/common.yaml#/components/headers/IdempotentReplayed" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+        "404": { $ref: "components/common.yaml#/components/responses/NotFound" }
+        "409": { $ref: "components/common.yaml#/components/responses/Conflict" }
+  /checkout/{paymentId}:
+    parameters:
+      - $ref: "#/components/parameters/PaymentId"
+    get:
+      tags: [checkout]
+      operationId: checkoutPage
+      summary: HTML page with "Pay" and "Decline" (public, via Gateway /mock-gateway/checkout/{paymentId})
+      security: []
+      responses:
+        "200":
+          description: HTML page
+          content:
+            text/html:
+              schema: { type: string }
+        "404": { $ref: "components/common.yaml#/components/responses/NotFound" }
+  /checkout/{paymentId}/complete:
+    parameters:
+      - $ref: "#/components/parameters/PaymentId"
+    get:
+      tags: [checkout]
+      operationId: checkoutComplete
+      summary: Button target. Enqueues the signed webhook (+2 s, Cloud Tasks) and redirects to the order.
+      description: GET because the Gateway only routes GET /mock-gateway/** (R-03).
+      security: []
+      parameters:
+        - name: outcome
+          in: query
+          required: true
+          schema: { type: string, enum: [APPROVED, DECLINED] }
+      responses:
+        "302":
+          description: Redirect to {FRONTEND_ORIGIN}/orders/{orderId}
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+        "404": { $ref: "components/common.yaml#/components/responses/NotFound" }
+  /webhook-dispatch:
+    post:
+      tags: [internal]
+      operationId: dispatchWebhook
+      summary: Cloud Tasks target. Signs the notification and POSTs it to Orders' webhook.
+      security: [{ serviceAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "orders.yaml#/components/schemas/PaymentNotification" }
+      responses:
+        "204": { description: Delivered (Orders answered 2xx) }
+        "502": { description: Orders did not accept it; Cloud Tasks retries }
+components:
+  securitySchemes:
+    serviceAuth: { $ref: "components/common.yaml#/components/securitySchemes/serviceAuth" }
+  parameters:
+    PaymentId:
+      name: paymentId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    CreatePaymentRequest:
+      type: object
+      required: [orderId, amountCents, currency, returnUrl]
+      additionalProperties: false
+      properties:
+        orderId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        amountCents: { $ref: "components/common.yaml#/components/schemas/Cents" }
+        currency: { $ref: "components/common.yaml#/components/schemas/Currency" }
+        returnUrl:
+          type: string
+          format: uri
+          description: Where the buyer is redirected after completing (the order page).
+    Payment:
+      type: object
+      required: [paymentId, orderId, status, amountCents, currency, checkoutUrl, expiresAt]
+      properties:
+        paymentId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        orderId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        status: { type: string, enum: [CREATED, APPROVED, DECLINED, REFUNDED] }
+        amountCents: { $ref: "components/common.yaml#/components/schemas/Cents" }
+        currency: { $ref: "components/common.yaml#/components/schemas/Currency" }
+        checkoutUrl: { type: string, format: uri }
+        expiresAt: { $ref: "components/common.yaml#/components/schemas/Timestamp" }

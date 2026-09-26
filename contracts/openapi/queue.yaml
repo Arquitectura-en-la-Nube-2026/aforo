@@ -1,0 +1,133 @@
+openapi: 3.1.0
+info:
+  title: Aforo Waiting Room (queue)
+  version: 0.1.0-draft
+  description: |
+    Decides purchase order and admits buyers at a pace. Redis only (Memorystore, which exists only
+    during live tests and demos: without it every queue endpoint answers 500 INTERNAL, ADR-0001).
+    Authenticated operations receive X-User-Id from the Gateway; the userId is the sorted-set member.
+    Consumes EventPublished and SalesRulesConfigured to build its local projection; never calls
+    Catalog on the critical path.
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/v1/queue/{eventId}/join:
+    parameters:
+      - $ref: "components/common.yaml#/components/parameters/EventId"
+    post:
+      tags: [queue]
+      operationId: joinQueue
+      summary: Join the queue. Re-joining returns the existing position (natural idempotency).
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201":
+          description: In the queue (or already admitted)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QueueStatus" }
+        "401": { $ref: "components/common.yaml#/components/responses/Unauthenticated" }
+        "404": { $ref: "components/common.yaml#/components/responses/NotFound" }
+        "409":
+          description: SALE_NOT_OPEN
+          content:
+            application/problem+json:
+              schema: { $ref: "components/common.yaml#/components/schemas/Problem" }
+  /api/v1/queue/{eventId}/status:
+    parameters:
+      - $ref: "components/common.yaml#/components/parameters/EventId"
+    get:
+      tags: [queue]
+      operationId: getQueueStatus
+      summary: Current position or pass. Also the SSE fallback (poll every 3 s, D-13).
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QueueStatus" }
+        "401": { $ref: "components/common.yaml#/components/responses/Unauthenticated" }
+        "404": { $ref: "components/common.yaml#/components/responses/NotFound" }
+  /api/v1/queue/{eventId}/stream:
+    parameters:
+      - $ref: "components/common.yaml#/components/parameters/EventId"
+    get:
+      tags: [queue]
+      operationId: streamQueueStatus
+      summary: Server-Sent Events with the QueueStatus object on every change
+      description: |
+        Emits `event: position` with a QueueStatus JSON on every change and
+        `event: admitted` with a QueueStatus (state ADMITTED, passToken set) when admitted.
+        The client closes the stream after `admitted`. The Gateway proxies this route without
+        buffering and without response timeout.
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+              example: |
+                event: position
+                data: {"eventId":"8f1b2c3d-0000-4000-8000-000000000001","state":"WAITING","position":12,"aheadOf":11,"estimatedWaitSeconds":10,"passToken":null,"passExpiresAt":null}
+
+                event: admitted
+                data: {"eventId":"8f1b2c3d-0000-4000-8000-000000000001","state":"ADMITTED","position":0,"aheadOf":0,"estimatedWaitSeconds":0,"passToken":"p_7Hk2…","passExpiresAt":"2026-10-01T15:10:00Z"}
+        "401": { $ref: "components/common.yaml#/components/responses/Unauthenticated" }
+  /internal/v1/events/queue-event-published:
+    post:
+      tags: [internal]
+      operationId: onEventPublished
+      summary: Pub/Sub push — EventPublished (stores sales window in the projection)
+      security: [{ serviceAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "components/common.yaml#/components/schemas/PubSubPushRequest" }
+      responses:
+        "204": { $ref: "components/common.yaml#/components/responses/PushAck" }
+  /internal/v1/events/queue-sales-rules:
+    post:
+      tags: [internal]
+      operationId: onSalesRulesConfigured
+      summary: Pub/Sub push — SalesRulesConfigured (stores openingWindowSeconds)
+      security: [{ serviceAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "components/common.yaml#/components/schemas/PubSubPushRequest" }
+      responses:
+        "204": { $ref: "components/common.yaml#/components/responses/PushAck" }
+  /health/live: { $ref: "components/common.yaml#/components/pathItems/HealthLive" }
+  /health/ready: { $ref: "components/common.yaml#/components/pathItems/HealthReady" }
+components:
+  securitySchemes:
+    bearerAuth: { $ref: "components/common.yaml#/components/securitySchemes/bearerAuth" }
+    serviceAuth: { $ref: "components/common.yaml#/components/securitySchemes/serviceAuth" }
+  schemas:
+    QueueStatus:
+      type: object
+      required: [eventId, state, position, aheadOf, estimatedWaitSeconds, passToken, passExpiresAt]
+      properties:
+        eventId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        state: { type: string, enum: [WAITING, ADMITTED] }
+        position: { type: integer, minimum: 0, description: 0 when admitted }
+        aheadOf: { type: integer, minimum: 0 }
+        estimatedWaitSeconds: { type: integer, minimum: 0 }
+        passToken:
+          type: [string, "null"]
+          description: Opaque. Not signed, not verified downstream (D-07).
+        passExpiresAt:
+          oneOf:
+            - $ref: "components/common.yaml#/components/schemas/Timestamp"
+            - type: "null"
+      examples:
+        - eventId: 8f1b2c3d-0000-4000-8000-000000000001
+          state: WAITING
+          position: 412
+          aheadOf: 411
+          estimatedWaitSeconds: 180
+          passToken: null
+          passExpiresAt: null

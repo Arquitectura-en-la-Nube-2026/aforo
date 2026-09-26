@@ -1,0 +1,58 @@
+openapi: 3.1.0
+info:
+  title: Aforo API Gateway
+  version: 0.1.0-draft
+  description: |
+    The Gateway's own endpoints. Everything else it does is routing, documented in
+    services/gateway/README.md. The login is a deliberate simulator (D-06): no password,
+    no validation. When Identity Platform arrives this route disappears.
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Simulated login — issues an 8-hour HS256 JWT with OIDC claims
+      security: []
+      parameters:
+        - $ref: "components/common.yaml#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Session issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResponse" }
+        "422": { $ref: "components/common.yaml#/components/responses/ValidationError" }
+  /health/live: { $ref: "components/common.yaml#/components/pathItems/HealthLive" }
+  /health/ready: { $ref: "components/common.yaml#/components/pathItems/HealthReady" }
+components:
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, displayName]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, examples: ["ana@example.com"] }
+        displayName: { type: string, minLength: 1, maxLength: 80, examples: ["Ana"] }
+    LoginResponse:
+      type: object
+      required: [accessToken, tokenType, expiresAt, user]
+      properties:
+        accessToken:
+          type: string
+          description: "JWT HS256. Claims: iss, sub (UUID v5 of lower-cased email), email, name, iat, exp."
+        tokenType: { type: string, const: Bearer }
+        expiresAt: { $ref: "components/common.yaml#/components/schemas/Timestamp" }
+        user:
+          type: object
+          required: [id, email, displayName]
+          properties:
+            id: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+            email: { type: string, format: email }
+            displayName: { type: string }

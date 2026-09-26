@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aforo.dev/contracts/events/event-published.v1.schema.json",
+  "title": "EventPublished v1 (data)",
+  "description": "Topic aforo.catalog.event-published. Emitted by Catalog when an event is published.",
+  "type": "object",
+  "required": ["eventId", "name", "salesOpensAt", "salesClosesAt", "sectors"],
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "name": { "type": "string" },
+    "salesOpensAt": { "type": "string", "format": "date-time" },
+    "salesClosesAt": { "type": "string", "format": "date-time" },
+    "sectors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["sectorId", "name", "capacity", "priceCents", "currency"],
+        "properties": {
+          "sectorId": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "capacity": { "type": "integer", "minimum": 1 },
+          "priceCents": { "type": "integer", "minimum": 0 },
+          "currency": { "const": "COP" }
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "eventId": "8f1b2c3d-0000-4000-8000-000000000001",
+      "name": "Festival Estéreo 2026",
+      "salesOpensAt": "2026-10-01T15:00:00Z",
+      "salesClosesAt": "2026-11-14T20:00:00Z",
+      "sectors": [
+        { "sectorId": "a1a1a1a1-0000-4000-8000-000000000001", "name": "General", "capacity": 500, "priceCents": 18000000, "currency": "COP" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,213 @@
+openapi: 3.1.0
+info:
+  title: Aforo Inventory & Reservations
+  version: 0.1.0-draft
+  description: |
+    Owner of availability. The only place where a race condition means lost money: no shortcuts.
+    Except for availability, the whole API is internal: only Orders and Cloud Tasks call it.
+    Does not verify any pass (D-07); trusts buyerId coming from Orders.
+    Builds its projection of sectors, prices and rules from EventPublished and
+    SalesRulesConfigured; an event not yet projected returns 404 (never queries Catalog).
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/v1/events/{eventId}/availability:
+    parameters:
+      - $ref: "components/common.yaml#/components/parameters/EventId"
+    get:
+      tags: [availability]
+      operationId: getAvailability
+      summary: Available seats per sector (public)
+      security: []
+      responses:
+        "200":
+          description: Availability
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Availability" }
+        "404": { $ref: "components/common.yaml#/components/responses/NotFound" }
+  /internal/v1/reservations:
+    post:
+      tags: [reservations]
+      operationId: createReservation
+      summary: Reserve seats in one local transaction
+      description: |
+        In one DB transaction, in this order:
+        1. `UPDATE sector_availability SET available = available - :q WHERE sector_id = :s AND available >= :q` — 0 rows → 409 SOLD_OUT.
+        2. Insert reservation; unique index on (buyer_id, event_id) where status = ACTIVE → 409 ACTIVE_RESERVATION_EXISTS.
+        3. Confirmed total of the buyer + quantity > maxTicketsPerPerson → 409 LIMIT_EXCEEDED (RF-12).
+        4. Write outbox record if applicable.
+        After commit, enqueue the Cloud Tasks expiry task with delay = reservationTtlSeconds and
+        task name = reservationId.
+      security: [{ serviceAuth: [] }]
+      parameters:
+        - $ref: "components/common.yaml#/components/parameters/IdempotencyKey"
+        - $ref: "components/common.yaml#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateReservationRequest" }
+      responses:
+        "201":
+          description: Reservation ACTIVE
+          headers:
+            Idempotent-Replayed: { $ref: "components/common.yaml#/components/headers/IdempotentReplayed" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Reservation" }
+        "404": { $ref: "components/common.yaml#/components/responses/NotFound" }
+        "409":
+          description: SOLD_OUT | ACTIVE_RESERVATION_EXISTS | LIMIT_EXCEEDED | IDEMPOTENCY_CONFLICT
+          content:
+            application/problem+json:
+              schema: { $ref: "components/common.yaml#/components/schemas/Problem" }
+        "422": { $ref: "components/common.yaml#/components/responses/ValidationError" }
+  /internal/v1/reservations/{reservationId}/confirm:
+    parameters:
+      - $ref: "#/components/parameters/ReservationId"
+    post:
+      tags: [reservations]
+      operationId: confirmReservation
+      summary: ACTIVE → CONFIRMED (and add to buyer total). If it already expired, returns EXPIRED.
+      description: |
+        Conditional: `UPDATE reservation SET status = 'CONFIRMED' WHERE id = :id AND status = 'ACTIVE'`.
+        The loser of the confirm/expire race reads and returns the final status. Idempotent.
+      security: [{ serviceAuth: [] }]
+      parameters:
+        - $ref: "components/common.yaml#/components/parameters/IdempotencyKey"
+        - $ref: "components/common.yaml#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: Final status (CONFIRMED or EXPIRED)
+          headers:
+            Idempotent-Replayed: { $ref: "components/common.yaml#/components/headers/IdempotentReplayed" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReservationTransition" }
+        "404": { $ref: "components/common.yaml#/components/responses/NotFound" }
+  /internal/v1/reservations/{reservationId}/release:
+    parameters:
+      - $ref: "#/components/parameters/ReservationId"
+    post:
+      tags: [reservations]
+      operationId: releaseReservation
+      summary: ACTIVE → RELEASED, seats go back to the sector. Idempotent.
+      security: [{ serviceAuth: [] }]
+      parameters:
+        - $ref: "components/common.yaml#/components/parameters/IdempotencyKey"
+        - $ref: "components/common.yaml#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: Final status
+          headers:
+            Idempotent-Replayed: { $ref: "components/common.yaml#/components/headers/IdempotentReplayed" }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReservationTransition" }
+        "404": { $ref: "components/common.yaml#/components/responses/NotFound" }
+  /internal/v1/reservations/{reservationId}/expire:
+    parameters:
+      - $ref: "#/components/parameters/ReservationId"
+    post:
+      tags: [reservations]
+      operationId: expireReservation
+      summary: Cloud Tasks target. ACTIVE → EXPIRED, seats back, publishes ReservationExpired. Idempotent.
+      description: |
+        Expires only if `status = ACTIVE` and `expires_at <= now()` (ADR-0003). Returns 200 with
+        the current status in every other case (already confirmed, or called a little early), so
+        Cloud Tasks does not retry; the one-minute housekeeping sweep catches anything missed.
+      security: [{ serviceAuth: [] }]
+      parameters:
+        - $ref: "components/common.yaml#/components/parameters/CorrelationId"
+      responses:
+        "200":
+          description: Final status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReservationTransition" }
+        "404": { $ref: "components/common.yaml#/components/responses/NotFound" }
+  /internal/v1/events/inventory-event-published:
+    post:
+      tags: [internal]
+      operationId: onEventPublished
+      summary: Pub/Sub push — EventPublished (creates sectors and sector_availability)
+      security: [{ serviceAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "components/common.yaml#/components/schemas/PubSubPushRequest" }
+      responses:
+        "204": { $ref: "components/common.yaml#/components/responses/PushAck" }
+  /internal/v1/events/inventory-sales-rules:
+    post:
+      tags: [internal]
+      operationId: onSalesRulesConfigured
+      summary: Pub/Sub push — SalesRulesConfigured (maxTicketsPerPerson, reservationTtlSeconds)
+      security: [{ serviceAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "components/common.yaml#/components/schemas/PubSubPushRequest" }
+      responses:
+        "204": { $ref: "components/common.yaml#/components/responses/PushAck" }
+  /internal/v1/housekeeping: { $ref: "components/common.yaml#/components/pathItems/Housekeeping" }
+  /health/live: { $ref: "components/common.yaml#/components/pathItems/HealthLive" }
+  /health/ready: { $ref: "components/common.yaml#/components/pathItems/HealthReady" }
+components:
+  securitySchemes:
+    serviceAuth: { $ref: "components/common.yaml#/components/securitySchemes/serviceAuth" }
+  parameters:
+    ReservationId:
+      name: reservationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  schemas:
+    ReservationStatus:
+      type: string
+      enum: [ACTIVE, CONFIRMED, EXPIRED, RELEASED]
+    Availability:
+      type: object
+      required: [eventId, sectors]
+      properties:
+        eventId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        sectors:
+          type: array
+          items:
+            type: object
+            required: [sectorId, name, capacity, available, priceCents, currency]
+            properties:
+              sectorId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+              name: { type: string }
+              capacity: { type: integer, minimum: 0 }
+              available: { type: integer, minimum: 0 }
+              priceCents: { $ref: "components/common.yaml#/components/schemas/Cents" }
+              currency: { $ref: "components/common.yaml#/components/schemas/Currency" }
+    CreateReservationRequest:
+      type: object
+      required: [eventId, sectorId, quantity, buyerId]
+      additionalProperties: false
+      properties:
+        eventId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        sectorId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        quantity: { type: integer, minimum: 1 }
+        buyerId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+    Reservation:
+      type: object
+      required: [reservationId, status, expiresAt, unitPriceCents, totalCents, currency]
+      properties:
+        reservationId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        status: { $ref: "#/components/schemas/ReservationStatus" }
+        expiresAt: { $ref: "components/common.yaml#/components/schemas/Timestamp" }
+        unitPriceCents: { $ref: "components/common.yaml#/components/schemas/Cents" }
+        totalCents: { $ref: "components/common.yaml#/components/schemas/Cents" }
+        currency: { $ref: "components/common.yaml#/components/schemas/Currency" }
+    ReservationTransition:
+      type: object
+      required: [reservationId, status]
+      properties:
+        reservationId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        status: { $ref: "#/components/schemas/ReservationStatus" }

@@ -1,0 +1,33 @@
+# Owners are requested automatically as reviewers. Each path has an owner and a backup so the
+# author of a PR is never the only possible approver.
+#
+# Team:
+#   @djguzmanc      David Julián Guzmán   — platform, infra, CI/CD, e2e
+#   @JuanjMedina    Juan José Medina      — contracts, common, gateway, catalog
+#   @SergioR-02     Sergio Ruiz           — frontend
+#   @CristianMontane Cristian Montañez    — queue (service + screen)
+#   @luleonr        Luis Esteban León     — inventory
+#   Daniel Felipe Soracipa                — orders + mock payment gateway
+#     TODO: not yet in the GitHub organization. Invite him and add his username below.
+
+# Default: repo-wide files (CLAUDE.md, docs, root config)
+*                                   @djguzmanc @JuanjMedina
+
+/contracts/                         @JuanjMedina @djguzmanc
+/packages/common/                   @JuanjMedina @djguzmanc
+/services/gateway/                  @JuanjMedina @djguzmanc
+/services/catalog/                  @JuanjMedina @CristianMontane
+
+/services/queue/                    @CristianMontane @SergioR-02
+/apps/web/                          @SergioR-02 @CristianMontane
+
+/services/inventory/                @luleonr @JuanjMedina
+/services/orders/                   @luleonr @JuanjMedina
+/functions/mock-payment-gateway/    @luleonr @JuanjMedina
+/functions/dlq-monitor/             @djguzmanc @JuanjMedina
+
+/infra/                             @djguzmanc @JuanjMedina
+/.github/                           @djguzmanc @JuanjMedina
+/.claude/                           @djguzmanc @JuanjMedina
+/Makefile                           @djguzmanc @JuanjMedina
+/e2e/                               @djguzmanc @luleonr
