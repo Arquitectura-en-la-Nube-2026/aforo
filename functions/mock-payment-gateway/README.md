@@ -1,7 +1,7 @@
 # mock-payment-gateway — FaaS #1 (HTTP)
 
 > Owner: Daniel Felipe (with Orders) · Contract: [contracts/openapi/mock-payment-gateway.yaml](../../contracts/openapi/mock-payment-gateway.yaml)
-> Decision: D-16 (replaces D-09) · Status: not started
+> Decision: D-16 (replaces D-09) · Status: implemented (storage: Firestore, decided)
 
 Stands in for the external payment gateway (Wompi in the target design). It lives **outside**
 Orders so that Orders' payment adapter is a real Anti-Corruption Layer and its circuit breaker
@@ -41,6 +41,7 @@ protects against a real network dependency. When Wompi arrives, only Orders' ada
 | ---------- | ----------------- |
 | Cold start | Single bundled file, no framework, Firestore/Tasks clients lazily created in module scope. Target < 1 s; measure and record here |
 | Execution time | Timeout 30 s. The 2 s delay is **not** a sleep: it's a Cloud Tasks schedule |
+| Bundle | `npm run build` bundles our code (and `@aforo/common` core) into `dist/index.js` (~11 kB). `@google-cloud/*` stay external (gRPC SDKs load proto files from disk and cannot be bundled); they are installed from `package.json` at deploy. **Cold start not measured yet**: measure after the first deploy and record it here |
 | Deployment | CI uploads `<sha>.zip` and runs `gcloud functions deploy --source gs://…/<sha>.zip` (no env flags; config is Terraform's). All-at-once, rollback with `update-traffic` (ADR-0004) |
 | Statelessness | No module-level state except SDK clients |
 
