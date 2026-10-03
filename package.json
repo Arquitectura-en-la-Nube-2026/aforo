@@ -12,6 +12,9 @@
     "apps/*"
   ],
   "scripts": {
+    "build": "npm run build --workspace=@aforo/common && npm run build --workspace=@aforo/gateway",
+    "build:common": "npm run build --workspace=@aforo/common",
+    "build:gateway": "npm run build --workspace=@aforo/gateway",
     "lint:contracts": "make lint-contracts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

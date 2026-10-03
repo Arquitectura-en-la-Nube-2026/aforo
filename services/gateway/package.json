@@ -1,0 +1,31 @@
+{
+  "name": "@aforo/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aforo API Gateway prototype",
+  "scripts": {
+    "predev": "npm run build --workspace=@aforo/common && npm run build",
+    "dev": "node --env-file=.env dist/main.js",
+    "build": "tsc -p tsconfig.json",
+    "pretest": "npm run build --workspace=@aforo/common && npm run build",
+    "test": "node --test test/gateway.integration.test.cjs",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@aforo/common": "^0.1.0",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/jwt": "^11.0.0",
+    "@nestjs/platform-fastify": "^11.0.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.14.1",
+    "fastify": "^5.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.0",
+    "uuid": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0"
+  }
+}

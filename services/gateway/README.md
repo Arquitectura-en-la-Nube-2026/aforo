@@ -1,61 +1,69 @@
-# gateway — API Gateway
+# Gateway — API Gateway
 
 > Owner: Juan José · Contract: [contracts/openapi/gateway.yaml](../../contracts/openapi/gateway.yaml)
-> Status: not started
+> Status: initial authentication foundation implemented
 
-Our own thin service (not Google's API Gateway product). It issues and validates the session
-token, generates the correlation ID, applies a per-IP quota and proxies to the owning service.
-With no Edge in this slice, it is the only public entry besides the frontend, so it also handles
-CORS. While login is simulated, the auth module lives here.
+This first slice provides the simulated login, HS256 session validation, correlation IDs,
+problem+json errors, structured request logs, health routes, CORS, and a Cloud Run container.
+The session JWT represents the browser user session. It is separate from Google OIDC ID tokens,
+which will identify Gateway-to-service calls when private service routing is implemented.
 
-It does **no** aggregation or response transformation. If a screen needs two things, it makes
-two calls.
+## Implemented routes
 
-## Routing table
+| Route | Behavior |
+| ------ | -------- |
+| `POST /api/v1/auth/login` | Validates `{ email, displayName }`; returns an eight-hour HS256 JWT. No password or identity provider is used. |
+| `GET /health/live` | Reports that the process is answering; intended for Cloud Run liveness. |
+| `GET /health/ready` | Runs registered dependency checks and returns 503 if any check fails. |
 
-| Public route | Target | Token |
+The UUID v5 namespace used for simulated user IDs is `d394b39c-c447-5a1f-b3ab-44c4b07be48c`.
+The email is trimmed and lower-cased before deriving the UUID and signing the token.
+
+## Local run
+
+Use Node 24. From this folder, copy `.env.example` to `.env`, set `AUTH_SECRET` to at least 32
+random bytes, and run `npm install` once at the repository root. Start the service with
+`npm run dev`. The service listens on `PORT` (8080 by default) and binds to `0.0.0.0`.
+Run `npm run dev` again after changing TypeScript sources; the command builds the shared package
+and Gateway before starting the process.
+
+To build the Cloud Run image, use the repository root as Docker context:
+`docker build -f services/gateway/Dockerfile -t aforo-gateway .`. Runtime values, including
+`AUTH_SECRET`, must be supplied through the Cloud Run service configuration.
+
+Example request:
+
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{"email":"ana@example.com","displayName":"Ana"}
+```
+
+## Still to implement
+
+The route proxy, bearer-token enforcement on proxied routes, stripping and forwarding user
+headers, Google OIDC service identity, distributed per-IP quotas, SSE pass-through, and payment
+webhook/mock routing are not part of this slice. `sessionStorage` persistence belongs to the
+frontend; the Gateway only issues and validates the session token.
+
+The planned public route map remains:
+
+| Public route | Target | Session token |
 | ------------ | ------ | :---: |
-| `POST /api/v1/auth/login` | gateway itself | No |
-| `GET /api/v1/events` | catalog | No |
-| `GET /api/v1/events/{eventId}` | catalog | No |
-| `POST /api/v1/events` | catalog | Yes |
-| `PUT /api/v1/events/{eventId}/sales-rules` | catalog | Yes |
-| `POST /api/v1/events/{eventId}/publish` | catalog | Yes |
-| `GET /api/v1/events/{eventId}/availability` | inventory | No |
-| `POST /api/v1/queue/{eventId}/join` | queue | Yes |
-| `GET /api/v1/queue/{eventId}/status` | queue | Yes |
-| `GET /api/v1/queue/{eventId}/stream` | queue (SSE) | Yes |
-| `POST /api/v1/orders` | orders | Yes |
-| `GET /api/v1/orders` | orders | Yes |
-| `GET /api/v1/orders/{orderId}` | orders | Yes |
-| `POST /api/v1/orders/{orderId}/payment-intents` | orders | Yes |
-| `POST /api/v1/payments/webhook` | orders | No (HMAC checked by orders) |
-| `GET /mock-gateway/**` | mock-payment-gateway function (prefix stripped) | No |
+| `GET /api/v1/events[/{eventId}]` | Catalog | No |
+| `POST /api/v1/events` | Catalog | Yes |
+| `PUT /api/v1/events/{eventId}/sales-rules` | Catalog | Yes |
+| `POST /api/v1/events/{eventId}/publish` | Catalog | Yes |
+| `GET /api/v1/events/{eventId}/availability` | Inventory | No |
+| `POST /api/v1/queue/{eventId}/join` | Queue | Yes |
+| `GET /api/v1/queue/{eventId}/status` and `/stream` | Queue | Yes |
+| `POST /api/v1/orders` and `GET /api/v1/orders[/{orderId}]` | Orders | Yes |
+| `POST /api/v1/orders/{orderId}/payment-intents` | Orders | Yes |
+| `POST /api/v1/payments/webhook` | Orders | No; Orders checks HMAC |
+| `GET /mock-gateway/**` | Mock-payment-gateway function | No |
 
-Note: `/availability` shares the `/api/v1/events/` prefix with Catalog but goes to Inventory —
-match it before the generic Catalog rule. `/internal/v1/**` is never routed.
-
-## Rules
-
-1. `POST /api/v1/auth/login` takes email and name, validates nothing and returns the JWT
-   (HS256, 8 h, claims `iss`, `sub`=UUID v5(email), `email`, `name`, `iat`, `exp`).
-   When Identity Platform arrives, this route disappears and validation uses the provider JWKS,
-   cached in memory.
-2. Missing or expired token on a protected route → `401 UNAUTHENTICATED` without touching the backend.
-3. On success forward `X-User-Id` and `X-User-Email`. Strip any client-sent `X-User-*` headers.
-4. `X-Queue-Pass` is forwarded as-is when present. Nobody verifies it (D-07).
-5. Quota: 60 req/min per IP on `/api/v1/queue/*` and 600 on the rest → `429 RATE_LIMITED` with `Retry-After`.
-6. `/api/v1/queue/{eventId}/stream` is proxied **without buffering and without response timeout**, or SSE breaks.
-7. Webhook and mock routes pass without token (the payment gateway has no session).
-   `/mock-gateway/checkout/…` is proxied to the function as `/checkout/…`.
-8. CORS: only `FRONTEND_ORIGIN`, allowing `Authorization`, `X-Queue-Pass`, `Idempotency-Key`, `X-Correlation-Id`.
-9. Calls to backends carry a Google OIDC ID token for the target URL (logic services are private).
-10. Generate `X-Correlation-Id` (UUID v4) if absent; echo it in the response.
-
-## Configuration
-
-See [.env.example](.env.example). `AUTH_SECRET` comes from Secret Manager in the cloud.
-
-## Run locally
-
-TODO (owner): `npm run dev` against the deployed `dev` services.
+When routing is added, `/availability` must be matched before the general Catalog event route,
+`/internal/v1/**` must never be exposed, and the SSE route must stream without buffering or a
+response timeout. Quotas and service-to-service identity will be implemented with shared or
+distributed infrastructure, never as per-instance in-memory state.

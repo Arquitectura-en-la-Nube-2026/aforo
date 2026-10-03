@@ -1,0 +1,40 @@
+{
+  "name": "@aforo/common",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared, framework-agnostic and NestJS utilities for Aforo services",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./nest": {
+      "types": "./dist/nest.d.ts",
+      "default": "./dist/nest.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "nest": ["dist/nest.d.ts"]
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "rxjs": "^7.8.0"
+  },
+  "devDependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@types/node": "^24.0.0",
+    "rxjs": "^7.8.0",
+    "typescript": "^5.8.0"
+  }
+}
