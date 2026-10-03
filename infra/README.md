@@ -38,10 +38,10 @@ infra/
 | Cloud SQL PostgreSQL | 1 `db-f1-micro` instance, 3 databases (`catalog`, `orders`, `inventory`) | Disk only, when `env_on = false` |
 | Memorystore for Redis | Basic 1 GB, **only while `redis_enabled = true`** (ADR-0001) | Nothing: it doesn't exist. ≈ US$1–2/day while on |
 | VPC | `aforo-vpc` + one subnet in the region, Direct VPC egress for `queue` only | Nothing |
-| Pub/Sub | 4 topics, 5 push subscriptions, 5 DLQs (the 2 `queue-*` subscriptions + DLQs only with Redis on) | Negligible |
-| Cloud Tasks | 2 queues: `reservation-expiry`, `payment-webhooks` | Negligible |
+| Pub/Sub | 4 topics, 6 push subscriptions, 6 DLQs (the 2 `queue-*` subscriptions + DLQs only with Redis on) | Negligible |
+| Cloud Tasks | 3 queues: `reservation-expiry`, `payment-webhooks`, `prewarm-windows` | Negligible |
 | Cloud Scheduler | 3 jobs → `POST /internal/v1/housekeeping` on catalog, inventory, orders every minute; paused when `env_on = false` (ADR-0002) | Free tier (3 jobs) |
-| Cloud Run functions | 2: `mock-payment-gateway` (HTTP), `dlq-monitor` (Pub/Sub trigger via Eventarc) | Nothing (scale to zero) |
+| Cloud Run functions | 3: `prewarmer` (Pub/Sub push + Cloud Tasks, D-21), `dlq-monitor` (Pub/Sub trigger via Eventarc), `mock-payment-gateway` (HTTP, test double) | Nothing (scale to zero). While a window is warm, `gateway` and `queue` keep 1 instance (≤ `PREWARM_HOLD_SECONDS`, 1 h) |
 | Cloud Monitoring | log-based metric + alert policy for dead letters | Free tier |
 | Cloud Storage | bucket for function sources (versioned) | Cents |
 | Secret Manager | login secret, webhook HMAC secret, DB passwords | Cents |
@@ -70,6 +70,8 @@ Never run `terraform apply` by hand: it would reset every switch to its default.
 - Cloud Run services: created with a placeholder image;
   `lifecycle { ignore_changes = [template[0].containers[0].image, traffic, client, client_version] }`.
 - Functions: created from a placeholder archive; `ignore_changes = [build_config[0].source]`.
+- `gateway` and `queue`: also `ignore_changes` on the service-level `scaling[0].min_instance_count`
+  (created at 0): the pre-warmer owns it (D-21).
 - Probes: startup and liveness on `/health/live`, never `/health/ready`, so a service with its DB
   or Redis off still deploys and boots.
 - Cross-resource values come from references, never copied URLs:
@@ -97,10 +99,10 @@ together.
 | gateway | 3 | 80 | request-based | — | — |
 | web | 2 | 80 | request-based | — | — |
 | queue | 2 | 250 | **always allocated** (SSE + admission timer) | — | — |
-| functions | 5 | 1 (default) | — | — | — |
+| functions | 5 (`prewarmer`: 1) | 1 (default) | — | — | — |
 | **Total DB connections** | | | | | **19 of 22** |
 
-All `min_instance_count = 0`.
+All `min_instance_count = 0`; during a sales window the pre-warmer raises `gateway` and `queue` to 1 (D-21).
 
 ## Pub/Sub settings (ADR-0005)
 
@@ -114,7 +116,9 @@ Push subscriptions with OIDC auth, `ack_deadline_seconds = 60`, `retry_policy` 1
 One runtime service account per Cloud Run service with least privilege (e.g. only `orders` may
 invoke `inventory`; only the Pub/Sub push SA may invoke `/internal/v1/events/*`; only the Cloud
 Tasks SA may invoke `inventory`'s `/expire` and the mock's `/webhook-dispatch`; only the
-Cloud Scheduler SA may invoke `/internal/v1/housekeeping`).
+Cloud Scheduler SA may invoke `/internal/v1/housekeeping`). The pre-warmer's SA has
+`roles/run.developer` only on `aforo-gateway` and `aforo-queue`, `roles/iam.serviceAccountUser`
+on their runtime SAs, and enqueue/list rights on `prewarm-windows`.
 
 ## Deployment
 

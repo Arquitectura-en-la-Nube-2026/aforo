@@ -40,7 +40,7 @@ blue/green is the default.
 
 ## Functions: all-at-once with instant rollback
 
-Cloud Run functions don't take `--no-traffic`, so the two functions deploy all-at-once:
+Cloud Run functions don't take `--no-traffic`, so the three functions deploy all-at-once:
 
 ```
 1. upload gs://aforo-dev-functions/<fn>/<git-sha>.zip
@@ -49,7 +49,7 @@ Cloud Run functions don't take `--no-traffic`, so the two functions deploy all-a
 4. rollback: gcloud run services update-traffic <fn> --to-revisions <previous>=100
 ```
 
-Accepted trade-off: they are the mock and the DLQ monitor, and rollback is one command.
+Accepted trade-off: they are small, rarely changed (pre-warmer, DLQ monitor, payment mock), and rollback is one command.
 
 ## Probes
 

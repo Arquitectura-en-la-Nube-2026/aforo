@@ -5,7 +5,7 @@ SHELL := /bin/bash
 PROJECT ?= aforo-dev
 REGION  ?= southamerica-east1
 SERVICES := gateway catalog queue orders inventory
-CONTRACTS := $(SERVICES) mock-payment-gateway
+CONTRACTS := $(SERVICES) mock-payment-gateway prewarmer
 PRISM_PORT ?= 4010
 
 .DEFAULT_GOAL := help

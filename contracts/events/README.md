@@ -27,17 +27,18 @@ opening the body.
 | ----- | -------- | ------ | -------------- | ----------------- | -------- |
 | `aforo.catalog.event-published` | catalog | `EventPublished` | [event-published.v1](event-published.v1.schema.json) | `queue-event-published` | queue |
 | `aforo.catalog.event-published` | catalog | `EventPublished` | ″ | `inventory-event-published` | inventory |
+| `aforo.catalog.event-published` | catalog | `EventPublished` | ″ | `prewarmer-event-published` | `functions/prewarmer` (D-21), at `POST /events/prewarmer-event-published` |
 | `aforo.catalog.sales-rules-configured` | catalog | `SalesRulesConfigured` | [sales-rules-configured.v1](sales-rules-configured.v1.schema.json) | `queue-sales-rules` | queue |
 | `aforo.catalog.sales-rules-configured` | catalog | `SalesRulesConfigured` | ″ | `inventory-sales-rules` | inventory |
 | `aforo.inventory.reservation-expired` | inventory | `ReservationExpired` | [reservation-expired.v1](reservation-expired.v1.schema.json) | `orders-reservation-expired` | orders |
 | `aforo.orders.order-paid` | orders | `OrderPaid` | [order-paid.v1](order-paid.v1.schema.json) | *none in this slice* | — |
-| `<subscription>-dlq` ×5 | Pub/Sub (dead-lettering) | any | [envelope](envelope.schema.json) (may be malformed) | Eventarc trigger | `functions/dlq-monitor` |
+| `<subscription>-dlq` ×6 | Pub/Sub (dead-lettering) | any | [envelope](envelope.schema.json) (may be malformed) | Eventarc trigger | `functions/dlq-monitor` |
 
 The `order-paid` topic is created anyway: when ticket issuance arrives, Orders doesn't change.
 
 Every push subscription targets `POST /internal/v1/events/{subscription-name}` on its consumer,
 authenticated with OIDC, retry backoff 10 s → 60 s, 5 delivery attempts, then its DLQ
-(`<subscription>-dlq`) (ADR-0005). Total: 4 business topics, 5 push subscriptions, 5 DLQ topics.
+(`<subscription>-dlq`) (ADR-0005). Total: 4 business topics, 6 push subscriptions, 6 DLQ topics.
 
 The two `queue-*` subscriptions and their DLQs exist **only while Memorystore is on**
 (`make redis-up`, ADR-0001). Messages published while they don't exist are not kept for the
@@ -75,6 +76,7 @@ projections must upsert and tolerate either arriving first.
 | ----- | -------- | ------ | --------- | -------- | ------- |
 | `reservation-expiry` | inventory | `POST /internal/v1/reservations/{id}/expire` (inventory) | `reservationId` (dedup) | `now + reservationTtlSeconds` | 5, `maxDoublings` 3 |
 | `payment-webhooks` | mock-payment-gateway | `POST /webhook-dispatch` (same function) | `notificationId` (dedup) | `now + 2 s` | 5 |
+| `prewarm-windows` | prewarmer | `POST /windows/warm`, `POST /windows/cool` (same function) | `warm-{eventId}-{epoch(opens)}`, `cool-{eventId}-{epoch(closes)}` (dedup) | `salesOpensAt − lead`, `min(salesClosesAt, salesOpensAt + hold)` | 5 |
 
 The task name is the deduplication: two attempts to enqueue the same reservation (or notification) produce one task.
 

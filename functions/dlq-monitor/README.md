@@ -1,10 +1,11 @@
 # dlq-monitor — FaaS #2 (Pub/Sub-triggered)
 
 > Owner: Julián (Platform / observability) · Consumes: DLQ topics of [contracts/events](../../contracts/events/README.md)
-> Decision: D-17 · Status: not started
+> Decision: D-17, accepted by D-21 · Status: not started
 
 Realizes the E-05 tactic "a DLQ with messages raises an alert" without new functional scope.
-Triggered (Eventarc / Pub/Sub trigger) by each of the five `<subscription>-dlq` topics.
+Triggered (Eventarc / Pub/Sub trigger) by each of the six `<subscription>-dlq` topics (the two
+`queue-*` ones exist only while Memorystore is on, ADR-0001).
 
 ## Behavior
 

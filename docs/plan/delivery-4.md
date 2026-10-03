@@ -20,13 +20,13 @@ Status legend: ✅ covered by the plan · ⚠️ covered with a known deviation 
 | ----------- | -------------- | -------------- | :----: |
 | Architectural styles from Delivery 2, visible in code and deployment | Microservices (one deployable per bounded context), event-driven (Pub/Sub topics + push subscriptions) | `services/*`, `infra/`, [../../contracts/events/](../../contracts/events/README.md) | ✅ |
 | Patterns from Delivery 2 | API Gateway · Database per Service · Saga (orchestrated) · Transactional Outbox / Inbox · Idempotent consumer · Anti-Corruption Layer · Circuit Breaker | See [pattern map](#pattern-map) | 🆕 Circuit breaker + real ACL (D-16, D-18) |
-| At least one resilience / elasticity / reliability tactic **demonstrable** live | (1) Timeouts + circuit breaker + retry against the mock with fault injection (E-06). (2) 200 concurrent reservations → exactly 10 (E-02). (3) Reservation expiry via Cloud Tasks restores seats (reliability). (4) Scale to zero / autoscaling on Cloud Run (E-07/E-01) | `services/orders` payment adapter, `functions/mock-payment-gateway` (`FAULT_MODE`), `services/inventory/test/concurrency/` | 🆕 |
+| At least one resilience / elasticity / reliability tactic **demonstrable** live | (1) Timeouts + circuit breaker + retry against the mock with fault injection (E-06). (2) 200 concurrent reservations → exactly 10 (E-02). (3) Reservation expiry via Cloud Tasks restores seats (reliability). (4) Scale to zero / autoscaling on Cloud Run (E-07/E-01). (5) Pre-warming before a sales window by `functions/prewarmer` (E-01) | `services/orders` payment adapter, `functions/mock-payment-gateway` (`FAULT_MODE`), `services/inventory/test/concurrency/` | 🆕 |
 | Detailed design honored: contracts = actual API | OpenAPI + JSON Schema in `contracts/`; request validation mirrors them; contract tests in CI against deployed revisions | `contracts/`, DoD | ✅ |
 | Schemas match what is deployed | SQL migrations per service are the schema source; they run as a Cloud Run job in the pipeline | `services/*/migrations/`, [build-and-deploy](../architecture/build-and-deploy.md) | 🆕 |
 | Lifecycle entities follow their state machines | Reservation, Order, Payment, Queue entry — transitions implemented as conditional updates and tested | [../architecture/state-machines.md](../architecture/state-machines.md) | 🆕 |
 | Infrastructure as Code, no manual resources | Terraform for everything (Cloud Run, functions, Cloud SQL, Pub/Sub, Cloud Tasks, secrets, IAM, alerts) | `infra/` | ✅ |
 | Immutable artifact + deliberate deployment strategy | Image per git SHA, deploy by digest, blue/green with Cloud Run revision tags; function source archives versioned by SHA | [build-and-deploy](../architecture/build-and-deploy.md), `.github/workflows/` | 🆕 (D-19) |
-| At least two FaaS components | `functions/mock-payment-gateway` (HTTP) and `functions/dlq-monitor` (Pub/Sub-triggered) | `functions/` | 🆕 (D-16, D-17) |
+| At least two FaaS components | `functions/prewarmer` (E-01: Pub/Sub push + Cloud Tasks) and `functions/dlq-monitor` (E-05: DLQ events). Both realize designed tactics; no service converted. The payment mock is also a function but presented as a test double | `functions/` | 🆕 (D-21) |
 
 ## 3.3 "Prototype" evaluation items
 
@@ -36,7 +36,7 @@ Status legend: ✅ covered by the plan · ⚠️ covered with a known deviation 
 | Architectural style and patterns | Pattern map below | ✅ |
 | Quality attribute tactics | Tactic map below | 🆕 |
 | **Multiple persistence paradigms** | Relational (Cloud SQL PostgreSQL: catalog, orders, inventory) + in-memory key-value with sorted sets (Memorystore for Redis: queue, created per window, ADR-0001) | ✅ |
-| FaaS component | Two functions | 🆕 |
+| FaaS component | Two functions realizing designed tactics: `prewarmer`, `dlq-monitor` (D-21) | 🆕 |
 | Containers + IaC | Cloud Run containers from Artifact Registry, Terraform | ✅ |
 
 ## Construction section of the artifact — where to get the material
@@ -70,7 +70,7 @@ Status legend: ✅ covered by the plan · ⚠️ covered with a known deviation 
 
 | Scenario | Tactic in the prototype | Demonstrable? | Dropped (justify in the artifact) |
 | -------- | ----------------------- | :-----------: | --------------------------------- |
-| E-01 Elasticity | Autoscaling, scale to zero, throttling by the waiting room, per-IP quota in the Gateway | Partially (admission pacing, scaling in Cloud Run metrics) | Pre-warming per window, load test |
+| E-01 Elasticity | Pre-warming per sales window (`functions/prewarmer`), autoscaling, scale to zero, throttling by the waiting room, per-IP quota in the Gateway | **Yes** (min instances rise before an opening and fall after; admission pacing) | Window-sized minimums (2–3), load test |
 | E-02 Zero overselling | Serialized conditional write in the data owner; admission control upstream; aggregate concurrency limit = instance caps × DB pools (ADR-0005) | **Yes** (concurrency test + Terraform config) | Window-sized DB profile (100 connections) |
 | E-03 Availability | Health checks; Cloud Run spreads instances across zones | Health checks only | DB replica / failover |
 | E-05 Observability | Structured logs + correlation ID across HTTP and bus; DLQ alert via `dlq-monitor` | **Yes** (follow a purchase in Cloud Logging; push a poison message) | Distributed tracing, error-rate alert |
@@ -88,10 +88,11 @@ reconciles the functions with Entrega 3 §5.2, which rejected FaaS for the servi
 | gateway, web | Continuous during a sale | Short, but proxies long SSE streams | Stateless; keep-alive connections | Container |
 | queue | Bursty at opening, continuous while a sale lasts | SSE streams up to 15 min | Redis connection, in-process admission timer | Container, CPU always allocated |
 | catalog, orders, inventory | Continuous during a sale | Short | DB connection pool (E-02), outbox flush | Container |
-| mock-payment-gateway | Sporadic: one call per payment | Sub-second | Stateless; delayed work delegated to Cloud Tasks | **FaaS** (HTTP) |
+| prewarmer | Rare: one event per published sale, two tasks per window | Milliseconds (two Admin API calls) | Stateless: the window is in the payload and the pending tasks | **FaaS** (Pub/Sub push + Cloud Tasks) |
 | dlq-monitor | Rare: only when a message dead-letters | Milliseconds | Stateless, one log write | **FaaS** (Pub/Sub event) |
+| mock-payment-gateway | Sporadic: one call per payment | Sub-second | Stateless; delayed work delegated to Cloud Tasks | Function, but a **test double** for the external gateway, not counted (D-21) |
 
-The two functions follow Lab 5's five phases: one responsibility each (granularity), an OpenAPI
+The two FaaS components follow Lab 5's five phases: one responsibility each (granularity), an OpenAPI
 contract or an event schema (trigger and contract), no state kept between invocations
 (externalization), idempotent under redelivery, and explicit timeouts (resilience).
 
@@ -106,6 +107,7 @@ with the artifact.
 | E-06 | Fail fast ≤ 50 ms with the circuit open; 0 double charges | `latencyMs` of `PAYMENT_UNAVAILABLE` responses while open; `circuit_state` logs |
 | E-05 | DLQ alert ≤ 5 min; purchase traceable by `correlationId` | Timestamp of `make poison` vs alert incident; Logging query for one purchase |
 | E-07 | Cost follows use | Billing report for an off day vs a demo day; `terraform plan` of `make redis-up` |
+| E-01 | Instances ready before the opening; no cold start in the first minute | Cloud Run `min instances` before/after the warm time; first-request latency at the opening vs a cold service |
 | FaaS | Cold start, execution time | First-invocation latency after idle, per function |
 | Deployment | Blue/green and rollback | Revision list with tags; time from `update-traffic` rollback to 100 % |
 

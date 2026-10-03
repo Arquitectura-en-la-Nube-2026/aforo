@@ -44,14 +44,15 @@ the contract wins.
 ## Julián (`@djguzmanc`) — Platform, deployment and operations
 
 **You work in:** `infra/`, `.github/workflows/`, `Makefile`, `e2e/`, `docs/runbooks/`,
-`functions/dlq-monitor/`.
+`functions/dlq-monitor/`, `functions/prewarmer/`.
 
 **Read:**
 - [../infra/README.md](../infra/README.md) — resources, modules, service accounts
 - [architecture/build-and-deploy.md](architecture/build-and-deploy.md) — immutable artifacts, blue/green, migrations
 - [../.github/workflows/README.md](../.github/workflows/README.md) — workflows to build
 - [../contracts/events/README.md](../contracts/events/README.md) — exact topic, subscription, DLQ and queue names
-- [../functions/dlq-monitor/README.md](../functions/dlq-monitor/README.md)
+- [../functions/dlq-monitor/README.md](../functions/dlq-monitor/README.md) and
+  [../functions/prewarmer/README.md](../functions/prewarmer/README.md) — the two FaaS components (D-21)
 - [runbooks/](runbooks/) — the two runbooks you own
 - Rules: `.claude/rules/infra.md`, `.claude/rules/functions.md`
 
@@ -60,7 +61,7 @@ one service deployed with the blue/green pipeline.
 
 **Hand over:** Terraform for every resource (ADR-0001, 0004, 0005), CI/CD per unit,
 `make up/down/redis-up/redis-down/seed/deploy/fault/poison/status`,
-DLQ alert, e2e suite, demo runbook.
+DLQ alert, pre-warmer, e2e suite, demo runbook.
 
 ---
 

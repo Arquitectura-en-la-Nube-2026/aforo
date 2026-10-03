@@ -35,8 +35,9 @@ aforo/
   services/queue/       Waiting room and admission (Redis)
   services/orders/      Orders, checkout saga, payment adapter (circuit breaker)
   services/inventory/   Availability and reservations
-  functions/mock-payment-gateway/   FaaS: stand-in for the payment gateway, with fault injection
-  functions/dlq-monitor/            FaaS: dead-letter alerting
+  functions/prewarmer/              FaaS: pre-warms gateway and queue before each sales window (E-01)
+  functions/dlq-monitor/            FaaS: dead-letter alerting (E-05)
+  functions/mock-payment-gateway/   Function standing in for the payment gateway (test double), with fault injection
   packages/common/      @aforo/common: envelope, outbox, inbox, errors, auth, logs, health
   contracts/            OpenAPI per service + JSON Schemas for events (source of truth)
   infra/                Terraform (everything in GCP is declared here)

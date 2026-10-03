@@ -30,7 +30,8 @@
 | **Total** | | | | **19 of 22** |
 
 Services without a database: gateway max 3, web max 2, queue max 2 (CPU always allocated),
-functions max 5. All `min_instance_count = 0`.
+functions max 5 (`prewarmer` max 1, concurrency 1). All `min_instance_count = 0`, except that the
+pre-warmer raises `gateway` and `queue` to 1 during a sales window (D-21).
 The pool waits (acquire timeout 5 s) instead of opening more connections. The concurrency
 test (200 concurrent reservations) fits in 3 × 80 request slots and queues on 6 connections.
 

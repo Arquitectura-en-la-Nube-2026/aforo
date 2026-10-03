@@ -11,7 +11,7 @@ Workload Identity Federation — no service-account keys in the repo.
 | `common.yml` | `packages/common/**` | lint, test, build | publish/build | TODO |
 | `service-<name>.yml` ×5 | `services/<name>/**`, `packages/common/**` | lint, test, docker build | build, push by SHA, deploy `--no-traffic --tag`, smoke, `--to-latest` | TODO |
 | `web.yml` | `apps/web/**` | lint, test, build | same as services for `aforo-web` | TODO |
-| `function-<name>.yml` ×2 | `functions/<name>/**`, `packages/common/**` | lint, test, bundle | upload `<sha>.zip`, `gcloud functions deploy --source` (no env flags), smoke | TODO |
+| `function-<name>.yml` ×3 | `functions/<name>/**`, `packages/common/**` | lint, test, bundle | upload `<sha>.zip`, `gcloud functions deploy --source` (no env flags), smoke | TODO |
 | `infra.yml` | `infra/**` | `terraform fmt -check`, `validate`, `make plan` | `make apply TF_APPLY_FLAGS=-auto-approve` (manual approval) | TODO |
 | `e2e.yml` | manual (`workflow_dispatch`) | — | run acceptance tests against `dev` | TODO |
 

@@ -15,7 +15,7 @@
 | Integration piles up at the end | High | Two fixed integration points (Wed Sept 30 and Mon Oct 5) with real deploys |
 | Someone drops out due to academic load | Medium | Redistribute the 14/13-point fronts first; the "my orders" list screen is cut first (see team-and-schedule) |
 | Delivery 4 requirements not visible in the running system (FaaS, tactic demo, deployment strategy) | Medium | Tracked item by item in [delivery-4.md](delivery-4.md); rehearsed on Thu Oct 8 |
-| Cloud Run functions runtime `nodejs24` not available in the region | Low | Fall back to `nodejs22` for the two functions only |
+| Cloud Run functions runtime `nodejs24` not available in the region | Low | Fall back to `nodejs22` for the functions only |
 
 ## Shared-environment etiquette
 

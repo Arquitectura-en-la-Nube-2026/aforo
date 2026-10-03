@@ -21,6 +21,6 @@ implemented in this slice because of D-07.
 | [0001](0001-memorystore-on-demand.md) | Queue store is Memorystore, created only for live tests and demos (supersedes D-15) | `infra/`, `services/queue`, runbooks |
 | [0002](0002-work-happens-inside-a-request.md) | No work outside a request: outbox flushed after commit + housekeeping every minute; webhook processed synchronously; queue admission with a Redis lock | `.claude/rules/services.md`, `packages/common`, `contracts/events` |
 | [0003](0003-reservation-expiry-safety-net.md) | Cloud Tasks expiry + a one-minute sweep; expire only when `expires_at <= now()` | `services/inventory` |
-| [0004](0004-terraform-owns-config-ci-owns-code.md) | Terraform owns config, CI owns code and traffic; runtime switches only via `make`; probes on `/health/live` | `.claude/rules/infra.md`, `Makefile`, build-and-deploy |
+| [0004](0004-terraform-owns-config-ci-owns-code.md) | Terraform owns config, CI owns code and traffic; runtime switches only via `make`; probes on `/health/live`. Amended by D-21: the pre-warmer owns the minimum instances of gateway and queue | `.claude/rules/infra.md`, `Makefile`, build-and-deploy |
 | [0005](0005-dev-sizing-and-demo-determinism.md) | Connection budget and instance caps; one Orders instance; DLQ timing | `infra/README.md`, `.env.example` files |
 | [0006](0006-inventory-partition-key.md) | No sharding in the slice; `event_id` is the partition key when needed | `services/inventory` schema |

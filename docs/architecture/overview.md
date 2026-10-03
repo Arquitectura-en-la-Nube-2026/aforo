@@ -10,7 +10,7 @@ flowchart LR
   G --> Q[queue]
   G --> O[orders<br/>saga · payment adapter + circuit breaker]
   G --> I[inventory]
-  G -->|/mock-gateway/**| MPG{{"λ mock-payment-gateway"}}
+  G -->|/mock-gateway/**| MPG{{"mock-payment-gateway<br/>(function, test double)"}}
   O -->|/internal/v1/reservations| I
   O -->|POST /payments| MPG
   MPG -->|+2 s via Cloud Tasks<br/>signed webhook| G
@@ -27,11 +27,16 @@ flowchart LR
   I --- DBI[(inventory DB)]
   Q --- R[(Memorystore<br/>on demand)]
   SCH[(Cloud Scheduler)] -->|every minute<br/>/internal/v1/housekeeping| C & I & O
+  PS -. push EventPublished .-> PW{{"λ prewarmer"}}
+  PW -->|warm / cool tasks| CTW[(Cloud Tasks<br/>prewarm-windows)]
+  CTW -->|POST /windows/*| PW
+  PW -. min instances .-> G & Q
   PS -. dead letters .-> DLQ{{"λ dlq-monitor"}}
   DLQ -->|ERROR log → alert| LOG[(Cloud Logging / Monitoring)]
 ```
 
-`λ` = FaaS component (Cloud Run functions). Everything else is a container on Cloud Run.
+`λ` = FaaS component (Cloud Run functions, D-21). The payment mock is also a Cloud Run function,
+but a test double for an external system. Everything else is a container on Cloud Run.
 
 | Unit | Owns | Store | Public routes (via Gateway) | Spec |
 | ---- | ---- | ----- | --------------------------- | ---- |
@@ -41,8 +46,9 @@ flowchart LR
 | `services/queue` | queue order and paced admission, pass | Memorystore for Redis (only for live tests and demos, ADR-0001) | `/api/v1/queue/**` | [README](../../services/queue/README.md) |
 | `services/orders` | order, checkout saga, payment adapter | Postgres `orders` | `/api/v1/orders/**`, `/api/v1/payments/webhook` | [README](../../services/orders/README.md) |
 | `services/inventory` | availability, reservations | Postgres `inventory` | `/api/v1/events/{id}/availability` | [README](../../services/inventory/README.md) |
-| `functions/mock-payment-gateway` | stand-in for the external PSP (FaaS) | Firestore *(optional)* | `/mock-gateway/**` | [README](../../functions/mock-payment-gateway/README.md) |
-| `functions/dlq-monitor` | dead-letter alerting (FaaS) | — | — | [README](../../functions/dlq-monitor/README.md) |
+| `functions/prewarmer` | pre-warming per sales window: min instances of gateway and queue (FaaS, E-01) | — (state = pending Cloud Tasks) | — | [README](../../functions/prewarmer/README.md) |
+| `functions/mock-payment-gateway` | stand-in for the external PSP (function, test double) | Firestore *(optional)* | `/mock-gateway/**` | [README](../../functions/mock-payment-gateway/README.md) |
+| `functions/dlq-monitor` | dead-letter alerting (FaaS, E-05) | — | — | [README](../../functions/dlq-monitor/README.md) |
 
 The full public routing table is in [`services/gateway/README.md`](../../services/gateway/README.md).
 

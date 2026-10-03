@@ -11,4 +11,9 @@
    one for `jsonPayload.event="circuit_state"` (E-06 demo).
 5. E-06 demo: `make fault MODE=timeout` takes about a minute to apply — explain the circuit
    breaker parameters meanwhile. Revert with `make fault MODE=none`.
-6. After the presentation: `make down`. The environment is not left on for later review.
+6. E-01 demo (pre-warming, D-21): through the Gateway with a session token, create an event with
+   `salesOpensAt = now + 3 min` and `salesClosesAt = now + 8 min` (`POST /api/v1/events`), set its
+   rules (`PUT …/sales-rules`) and publish it (`POST …/publish`). Show `aforo-gateway` and
+   `aforo-queue` minimum instances go to 1 within seconds and back to 0 at the close, and the
+   `jsonPayload.event="prewarm_applied"` logs. TODO: script it (`make prewarm-demo`).
+7. After the presentation: `make down`. The environment is not left on for later review.

@@ -1,0 +1,106 @@
+openapi: 3.1.0
+info:
+  title: Aforo Pre-warmer (FaaS)
+  version: 0.1.0-draft
+  description: |
+    Cloud Run function that realizes the E-01 tactic "pre-warming per sales window" (D-21).
+    Receives EventPublished by Pub/Sub push, schedules a warm and a cool task per event on the
+    Cloud Tasks queue `prewarm-windows`, and on each task sets the service-level minimum
+    instances of aforo-gateway and aforo-queue through the Cloud Run Admin API.
+    Internal only: no route is exposed by the Gateway.
+servers:
+  - url: http://localhost:8080
+paths:
+  /events/prewarmer-event-published:
+    post:
+      tags: [internal]
+      operationId: onEventPublished
+      summary: Pub/Sub push — EventPublished. Schedules the warm and cool tasks of the event's window.
+      description: |
+        Uses only the payload (never calls Catalog). Named tasks make it idempotent: a re-emitted
+        event (the seed re-emits on every `make up`) creates nothing new.
+      security: [{ serviceAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "components/common.yaml#/components/schemas/PubSubPushRequest" }
+      responses:
+        "204": { $ref: "components/common.yaml#/components/responses/PushAck" }
+        "400": { description: Not a valid envelope — dead-letters (ADR-0005) }
+        "503": { description: Cloud Tasks unavailable — Pub/Sub retries }
+  /windows/warm:
+    post:
+      tags: [internal]
+      operationId: warmWindow
+      summary: Cloud Tasks target. Raises the minimum instances of the target services.
+      security: [{ serviceAuth: [] }]
+      parameters:
+        - $ref: "components/common.yaml#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowTask" }
+      responses:
+        "200":
+          description: Applied (or already applied)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WindowResult" }
+        "503": { description: Cloud Run Admin API unavailable — Cloud Tasks retries }
+  /windows/cool:
+    post:
+      tags: [internal]
+      operationId: coolWindow
+      summary: Cloud Tasks target. Returns the target services to the baseline unless another window is open.
+      security: [{ serviceAuth: [] }]
+      parameters:
+        - $ref: "components/common.yaml#/components/parameters/CorrelationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WindowTask" }
+      responses:
+        "200":
+          description: Applied, or kept warm because another window is open
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WindowResult" }
+        "503": { description: Cloud Run Admin or Cloud Tasks API unavailable — Cloud Tasks retries }
+components:
+  securitySchemes:
+    serviceAuth: { $ref: "components/common.yaml#/components/securitySchemes/serviceAuth" }
+  schemas:
+    WindowTask:
+      type: object
+      required: [eventId, salesOpensAt, salesClosesAt]
+      additionalProperties: false
+      properties:
+        eventId: { $ref: "components/common.yaml#/components/schemas/Uuid" }
+        salesOpensAt: { $ref: "components/common.yaml#/components/schemas/Timestamp" }
+        salesClosesAt: { $ref: "components/common.yaml#/components/schemas/Timestamp" }
+      examples:
+        - eventId: 8f1b2c3d-0000-4000-8000-000000000001
+          salesOpensAt: "2026-10-01T15:00:00Z"
+          salesClosesAt: "2026-11-14T20:00:00Z"
+    WindowResult:
+      type: object
+      required: [action, services]
+      properties:
+        action: { type: string, enum: [WARM, COOL, KEPT_WARM] }
+        services:
+          type: array
+          items:
+            type: object
+            required: [service, from, to]
+            properties:
+              service: { type: string, examples: [aforo-gateway] }
+              from: { type: integer, minimum: 0 }
+              to: { type: integer, minimum: 0 }
+      examples:
+        - action: WARM
+          services:
+            - { service: aforo-gateway, from: 0, to: 1 }
+            - { service: aforo-queue, from: 0, to: 1 }

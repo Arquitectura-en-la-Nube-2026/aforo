@@ -12,11 +12,12 @@ requirement-by-requirement map is in [delivery-4.md](delivery-4.md).
 | -- | ----- | ------ |
 | [D-01 (rev.)](#d-01-rev--node-24) | Node 24 instead of Node 22 | Accepted |
 | [D-14 (rev.)](#d-14-rev--schedule-moves-to-the-oct-12-deadline) | Schedule moves to the Oct 12 deadline | Accepted |
-| [D-16](#d-16--the-mock-payment-gateway-becomes-a-faas-component) | Mock payment gateway becomes a FaaS component | **Proposed** |
-| [D-17](#d-17--dlq-monitor-as-the-second-faas-component) | DLQ monitor as the second FaaS component | **Proposed** |
+| [D-16](#d-16--the-mock-payment-gateway-becomes-a-faas-component) | Mock payment gateway becomes a FaaS component | **Amended by D-21**: stays a function, not counted as a FaaS component |
+| [D-17](#d-17--dlq-monitor-as-the-second-faas-component) | DLQ monitor as the second FaaS component | **Accepted** (by D-21) |
 | [D-18](#d-18--circuit-breaker-and-fault-injection-on-the-payment-path) | Circuit breaker and fault injection on the payment path | **Proposed** |
 | [D-19](#d-19--immutable-artifacts-and-bluegreen-deployment) | Immutable artifacts and blue/green deployment | **Proposed** |
 | [D-20](#d-20--the-inventory-concurrency-test-is-not-cuttable) | The Inventory concurrency test is not cuttable | **Proposed** |
+| [D-21](#d-21--faas-components-are-the-pre-warmer-and-the-dlq-monitor) | FaaS components are the pre-warmer (E-01) and the DLQ monitor (E-05) | **Accepted** |
 | [Open](#open--bring-back-queue-pass-verification-d-07) | Bring back queue-pass verification (D-07) | **Open** |
 
 "Proposed" decisions are already reflected in the repo (contracts, READMEs, rules) so work can
@@ -38,7 +39,7 @@ would pin the team to Prism 5.14. Angular 20 (`^20.19 || ^22.12 || >=24`) and Ne
 Cloud Run functions runtime `nodejs24`.
 
 **Consequences.** One runtime for the whole team and current tooling. If `nodejs24` is not
-available for Cloud Run functions in `southamerica-east1`, the two functions alone fall back to
+available for Cloud Run functions in `southamerica-east1`, the functions alone fall back to
 `nodejs22`.
 
 ---
@@ -80,7 +81,7 @@ connections or DB pools, and must not add functional scope ("no new functional s
 | Turn a logic service into functions | Rejected: contradicts Entrega 3 §5.2 for the exact reasons it gave |
 | Ticket issuance as a function consuming `OrderPaid` | Rejected: new functional scope (RF-15…) |
 | **Mock payment gateway as a function** | **Chosen**: it stands in for an external system, is stateless, short-lived, HTTP-triggered |
-| Pre-warming scheduler for the sales window (E-01) | Kept as alternative if D-17 is rejected; needs Cloud Run Admin API permissions |
+| Pre-warming scheduler for the sales window (E-01) | Kept as alternative; **chosen later in D-21** |
 
 **Decision.** `functions/mock-payment-gateway` is a Cloud Run function with its own contract
 ([mock-payment-gateway.yaml](../../contracts/openapi/mock-payment-gateway.yaml)). Orders reaches
@@ -108,7 +109,7 @@ it only through its payment adapter. The browser reaches the checkout page throu
 **Context.** A second FaaS component is required. The plan dropped alerts ("only verifiable
 under load"), yet the DLQ alert of E-05 does not need load: one poison message is enough.
 
-**Decision.** `functions/dlq-monitor` is triggered by the five `<subscription>-dlq` topics. It
+**Decision.** `functions/dlq-monitor` is triggered by the `<subscription>-dlq` topics (six since D-21). It
 writes one structured `ERROR` log per dead letter (`event=dead_letter`, subscription, type,
 messageId, correlationId). A log-based metric and an alert policy in Terraform fire when the
 count is > 0 within 5 minutes. `make poison` publishes a malformed message to demonstrate it.
@@ -184,6 +185,53 @@ the whole inventory design exists for. The first cut becomes the "my orders" **l
 the order detail stays because the demo needs it.
 
 **Consequences.** Inventory's load (10 points) absorbs the test; it was already the lightest front.
+
+---
+
+## D-21 · FaaS components are the pre-warmer and the DLQ monitor
+
+- **Status:** Accepted · **Date:** 2026-10-03 · **Amends:** D-16 · **Accepts:** D-17
+- **Guide requirement:** §2.2 "At least two components must be implemented following
+  Functions-as-a-Service principles".
+- **Input:** the professor confirmed FaaS components are required, but **not as components added
+  only to comply**.
+
+**Context.** D-16 made the payment mock our first FaaS component. A mock is a test double for an
+external system, not part of Aforo, so it reads as added for compliance. Converting a
+microservice was also considered and rejected: every service in the slice keeps the reason
+Entrega 3 §5.2 gave for containers (SSE in `queue`, DB pools in `inventory`, saga and
+circuit-breaker state in `orders`, continuous traffic in `gateway`/`web`; `catalog` would be a
+rewrite split by routes, a Lab 5 anti-pattern).
+
+**Options considered.**
+
+| Option | Verdict |
+| ------ | ------- |
+| Convert a microservice to functions | Rejected: contradicts Entrega 3 §5.2 for the reasons it gave |
+| Ticket issuance as a function consuming `OrderPaid` (RF-15) | Rejected for now: new functional scope, new store, read endpoint and UI with nine days left |
+| **Pre-warmer for the sales window (E-01)** | **Chosen**: a tactic Entrega 3 designed and the slice had dropped |
+| **DLQ monitor (E-05)** | **Kept** (D-17): a tactic Entrega 3 designed |
+
+**Decision.** The two FaaS components are:
+
+1. `functions/prewarmer`: realizes the E-01 tactic "pre-warming per sales window". Triggered
+   by `EventPublished`, it schedules two named Cloud Tasks per event (warm before
+   `salesOpensAt`, cool at `salesClosesAt`). Each task makes it set service-level minimum
+   instances on `gateway` and `queue` through the Cloud Run Admin API.
+2. `functions/dlq-monitor`: realizes the E-05 tactic "a DLQ with messages raises an alert" (D-17).
+
+The payment mock **stays a Cloud Run function** (already specified, no extra cost) but is
+presented as a test double for the external gateway, not as one of the FaaS components.
+
+**Consequences.**
+- E-01 moves from "partially demonstrable" to demonstrable: publish an event that opens in
+  ~12 minutes and watch the minimum instances rise before the opening.
+- The artifact gets two different trigger models (Pub/Sub event + delayed tasks, and DLQ
+  events), both on work that is rare, short and stateless (Lab 5 decision tree).
+- Terraform stops managing `min_instance_count` on `gateway` and `queue`: the pre-warmer owns
+  it (ADR-0004, amended).
+- One more Cloud Tasks queue (`prewarm-windows`) and a service account allowed to update only
+  those two services. Owner: Platform.
 
 ---
 
