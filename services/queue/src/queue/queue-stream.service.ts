@@ -1,6 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { ShutdownService } from "@aforo/common/nest";
 import type { FastifyReply } from "fastify";
+import { setTimeout as delay } from "node:timers/promises";
 import type { QueueConfig } from "../config/queue-config";
 import { QUEUE_CONFIG } from "../redis/redis.service";
 import { QueueService } from "./queue.service";
@@ -22,7 +23,7 @@ export const STREAM_POLL_MS = 1000;
  */
 @Injectable()
 export class QueueStreamService {
-  private readonly open = new Set<() => void>();
+  private readonly open = new Set<{ finish: () => void; done: Promise<void> }>();
 
   constructor(
     @Inject(QUEUE_CONFIG) private readonly config: QueueConfig,
@@ -30,8 +31,14 @@ export class QueueStreamService {
     shutdown: ShutdownService,
   ) {
     // An open stream is an in-flight request: close them first or the HTTP server waits for them.
-    shutdown.onDrain("sse-streams", () => {
-      for (const close of [...this.open]) close();
+    shutdown.onDrain("sse-streams", async () => {
+      const streams = [...this.open];
+      for (const { finish } of streams) finish();
+      // Wait until the responses have really finished, not just been told to. Fastify closes the idle
+      // connections once, when it starts closing: a connection still writing its last bytes is not
+      // idle yet and would hold the server open until the keep-alive timeout, past the ~10 s Cloud
+      // Run gives after SIGTERM.
+      await Promise.race([Promise.allSettled(streams.map(({ done }) => done)), delay(1000)]);
     });
   }
 
@@ -55,14 +62,18 @@ export class QueueStreamService {
     let poll: NodeJS.Timeout | undefined;
     let heartbeat: NodeJS.Timeout | undefined;
 
-    const finish = (): void => {
-      if (closed) return;
-      closed = true;
-      clearInterval(poll);
-      clearInterval(heartbeat);
-      this.open.delete(finish);
-      raw.end();
+    const handle = {
+      finish: (): void => {
+        if (closed) return;
+        closed = true;
+        clearInterval(poll);
+        clearInterval(heartbeat);
+        this.open.delete(handle);
+        raw.end();
+      },
+      done: new Promise<void>((resolve) => raw.once("close", resolve)),
     };
+    const finish = handle.finish;
 
     const emit = (status: QueueStatus): void => {
       last = `${status.state}:${status.position}`;
@@ -70,7 +81,7 @@ export class QueueStreamService {
       if (status.state === "ADMITTED") finish();
     };
 
-    this.open.add(finish);
+    this.open.add(handle);
     raw.on("close", finish);
     emit(first);
     if (closed) return;
