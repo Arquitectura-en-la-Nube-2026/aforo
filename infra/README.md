@@ -1,6 +1,6 @@
 # infra — Terraform
 
-> Owner: Julián · Status: not started
+> Owner: Julián · Status: in progress (bootstrap done; foundation: Artifact Registry, functions bucket, team access)
 
 Everything in GCP is declared here (RT-04). Nothing is created by hand in the console, and no
 `gcloud` command changes a resource Terraform owns. That is also what makes turning the
@@ -8,7 +8,7 @@ environment off and on possible.
 
 ## Prerequisites (done by Julián before Mon Sept 28, the only manual step)
 
-Project `aforo-dev` with billing, six accounts with editor role, APIs enabled (Cloud Run,
+Project `aforo-dev-teamf` (`aforo-dev` was taken globally) with billing, six accounts with editor role, APIs enabled (Cloud Run,
 Cloud SQL, Pub/Sub, Cloud Tasks, Cloud Scheduler, Secret Manager, Artifact Registry,
 IAM Credentials, Cloud Functions, Cloud Build, Eventarc, Memorystore for Redis, Compute Engine
 (VPC), Monitoring), a GCS bucket for Terraform state, and Workload Identity Federation for
