@@ -3,6 +3,10 @@ variable "name" {
   type        = string
 }
 
+variable "project_id" {
+  type = string
+}
+
 variable "region" {
   type = string
 }
@@ -65,4 +69,10 @@ variable "invokers" {
   description = "IAM members allowed to invoke a private service, e.g. serviceAccount:..."
   type        = list(string)
   default     = []
+}
+
+variable "cloud_sql_instance" {
+  description = "Connection name to mount at /cloudsql, or empty for services without a database."
+  type        = string
+  default     = ""
 }
