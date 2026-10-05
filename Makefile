@@ -2,7 +2,7 @@
 # Targets marked TODO are placeholders owned by the Platform front (see docs/runbooks/).
 
 SHELL := /bin/bash
-PROJECT ?= aforo-dev
+PROJECT ?= aforo-dev-teamf
 REGION  ?= southamerica-east1
 SERVICES := gateway catalog queue orders inventory
 CONTRACTS := $(SERVICES) mock-payment-gateway prewarmer
@@ -33,6 +33,7 @@ lint-contracts: ## Lint every OpenAPI file
 TF_DIR := infra/envs/dev
 TF     := terraform -chdir=$(TF_DIR)
 TF_APPLY_FLAGS ?=
+TF_PLAN_FLAGS ?=
 
 # Current value of switch $(1) from state, or default $(2) when the output doesn't exist yet.
 tf_switch = $(or $(shell $(TF) output -raw switch_$(1) 2>/dev/null),$(2))
@@ -57,7 +58,7 @@ status: tf-state ## Show the runtime switches (env_on, redis_enabled, mock_fault
 
 .PHONY: plan
 plan: tf-state ## terraform plan for dev with the current switches
-	$(TF) plan -input=false -var env_on=$(CUR_ENV_ON) -var redis_enabled=$(CUR_REDIS) -var mock_fault_mode=$(CUR_FAULT)
+	$(TF) plan -input=false $(TF_PLAN_FLAGS) -var env_on=$(CUR_ENV_ON) -var redis_enabled=$(CUR_REDIS) -var mock_fault_mode=$(CUR_FAULT)
 
 .PHONY: apply
 apply: tf-state ## Apply infra changes, keeping the current switches
