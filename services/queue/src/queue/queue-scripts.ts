@@ -19,11 +19,15 @@ export const admissionLockKey = (eventId: string, tick: number) => `admission:${
 /**
  * KEYS[1] queue:{eventId}, KEYS[2] admitted:{eventId}:{userId}
  * ARGV[1] userId, ARGV[2] score, ARGV[3] "1" when the sale is open.
- * Admitted wins over everything: a buyer with a pass gets it back even if the sale just closed.
+ * A buyer with a pass gets it back, and one already in the queue gets the place, even if the sale just
+ * closed: admission keeps serving the queue, so a reload must not answer "not open" to someone about to
+ * be admitted. Only a newcomer gets NOT_OPEN.
  */
 export const JOIN_LUA = `
 local pass = redis.call('GET', KEYS[2])
 if pass then return {'ADMITTED', pass} end
+local rank = redis.call('ZRANK', KEYS[1], ARGV[1])
+if rank then return {'WAITING', rank + 1} end
 if ARGV[3] ~= '1' then return {'NOT_OPEN'} end
 redis.call('ZADD', KEYS[1], 'NX', ARGV[2], ARGV[1])
 return {'WAITING', redis.call('ZRANK', KEYS[1], ARGV[1]) + 1}
@@ -56,7 +60,22 @@ end
 return users
 `;
 
-export type JoinReply = ["ADMITTED", string] | ["NOT_OPEN"] | ["WAITING", number];
+/**
+ * KEYS[1] event:{eventId}
+ * ARGV[1] the field that keeps when this kind of message last happened ("publishedAt" or "rulesAt"),
+ * ARGV[2] the message's occurredAt in epoch ms, ARGV[3..] field/value pairs to write.
+ * Pub/Sub does not keep the order: rules changed from 0 to 60 s can arrive as 60 then 0. A message older
+ * than the last applied one of its kind is skipped (returns 0), so the newest always wins. Each kind has
+ * its own clock: old rules must not hold back a newer EventPublished.
+ */
+export const PROJECT_LUA = `
+local last = tonumber(redis.call('HGET', KEYS[1], ARGV[1]))
+if last and tonumber(ARGV[2]) < last then return 0 end
+redis.call('HSET', KEYS[1], ARGV[1], ARGV[2], unpack(ARGV, 3))
+return 1
+`;
+
+export type JoinReply =["ADMITTED", string] | ["NOT_OPEN"] | ["WAITING", number];
 export type StatusReply = ["ADMITTED", string] | ["WAITING", number] | ["NONE"];
 
 /** The scripts as methods of the ioredis client (registered with defineCommand in RedisService). */
@@ -64,4 +83,5 @@ export interface QueueScripts {
   queueJoin(queueKey: string, admittedKey: string, userId: string, score: number, open: string): Promise<JoinReply>;
   queueStatus(queueKey: string, admittedKey: string, userId: string): Promise<StatusReply>;
   queueAdmit(queueKey: string, ...args: Array<string | number>): Promise<string[]>;
+  projectionUpsert(eventKey: string, clockField: string, occurredAtMs: number, ...fields: string[]): Promise<number>;
 }

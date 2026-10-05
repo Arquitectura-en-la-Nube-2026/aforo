@@ -61,7 +61,7 @@ Consumes `EventPublished` (`queue-event-published`) and `SalesRulesConfigured`
 | --- | ---- | ------- |
 | `queue:{eventId}` | sorted set | member `userId`, score per RF-05 |
 | `admitted:{eventId}:{userId}` | string + TTL | `<passExpiresAt in epoch ms>:<passToken>` (the expiry is stored, not derived from the TTL, so `passExpiresAt` does not drift between calls) |
-| `event:{eventId}` | hash | projection (`salesOpensAt`, `salesClosesAt`, `openingWindowSeconds`) |
+| `event:{eventId}` | hash | projection (`salesOpensAt`, `salesClosesAt`, `openingWindowSeconds`), plus `publishedAt` and `rulesAt`: the `occurredAt` (epoch ms) of the last message of each kind applied. An older one is skipped, so rules changed from 0 to 60 s stay at 60 s even if the old message arrives last |
 | `inbox:{messageId}` | string + TTL | consumed message ids |
 | `admission:{eventId}:{tick}` | string + TTL | admission lock for one tick (ADR-0002) |
 
@@ -77,6 +77,7 @@ Consumes `EventPublished` (`queue-event-published`) and `SalesRulesConfigured`
 | Pass expired and the buyer joins again | They go to the **end** of the queue | The pass is not renewed (D-07); the 10 minutes are the buyer's chance |
 | `status` / `stream` for a buyer who never joined or whose pass expired | 404 `NOT_FOUND` | The contract lists 404 and nothing else for this case |
 | Buyer holds a pass and the sale closes | `join` still returns their pass; a new buyer gets 409 | A pass is a promise, closing the sale does not revoke it |
+| Buyer is still waiting when the sale closes | `join` returns their place, and admission keeps serving the queue; a new buyer gets 409 | Same promise as the pass. Before, a page reload answered "not open" to a buyer whom the next tick would admit |
 | Re-join | Keeps the place (`ZADD NX`) | Natural idempotency |
 | `AUTH_MODE` | Reserved, not read | The service trusts `X-User-Id`; Cloud Run IAM decides who can call it. The shared `auth` module does not exist yet |
 
@@ -95,7 +96,8 @@ Consumes `EventPublished` (`queue-event-published`) and `SalesRulesConfigured`
   `position` only when it changed. The first message is a snapshot, so an admission between `join`
   and opening the stream is not missed. The server closes the stream after `admitted`.
 - **Push consumers** (`events.controller.ts`) apply the effect first and mark the inbox after, never
-  the other way round (`@aforo/common` `consumeOnce`).
+  the other way round (`@aforo/common` `consumeOnce`). The effect itself skips a message older than the
+  last one of its kind, so a retried old message cannot undo a newer one.
 
 ## Run it locally
 

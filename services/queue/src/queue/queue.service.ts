@@ -32,7 +32,7 @@ export class QueueService {
   /**
    * Joins the queue, or returns the existing position or pass (re-joining is naturally idempotent).
    * 404 when the event has no projection yet; 409 SALE_NOT_OPEN outside the sale window, except that a
-   * buyer who already holds a pass gets it back. The atomic part lives in JOIN_LUA.
+   * buyer who already holds a pass or a place gets it back. The atomic part lives in JOIN_LUA.
    */
   async join(eventId: string, userId: string, now = Date.now()): Promise<QueueStatus> {
     assertEventId(eventId);

@@ -24,13 +24,13 @@ export class EventsController {
   @HttpCode(204)
   async onEventPublished(@Body() body: unknown): Promise<void> {
     const envelope = parsePushEnvelope<EventPublishedData>(body, "EventPublished");
-    await consumeOnce(this.inbox, envelope.messageId, () => this.projection.applyEventPublished(envelope.data));
+    await consumeOnce(this.inbox, envelope.messageId, () => this.projection.applyEventPublished(envelope.data, envelope.occurredAt));
   }
 
   @Post("queue-sales-rules")
   @HttpCode(204)
   async onSalesRulesConfigured(@Body() body: unknown): Promise<void> {
     const envelope = parsePushEnvelope<SalesRulesConfiguredData>(body, "SalesRulesConfigured");
-    await consumeOnce(this.inbox, envelope.messageId, () => this.projection.applySalesRules(envelope.data));
+    await consumeOnce(this.inbox, envelope.messageId, () => this.projection.applySalesRules(envelope.data, envelope.occurredAt));
   }
 }

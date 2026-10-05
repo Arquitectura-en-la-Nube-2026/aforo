@@ -75,7 +75,7 @@ async function untilRedisReady(app) {
   throw new Error("Redis connection did not become ready");
 }
 
-function envelope(type, data) {
+function envelope(type, data, occurredAt = Date.now()) {
   return {
     subscription: "projects/aforo-dev/subscriptions/test",
     message: {
@@ -85,7 +85,7 @@ function envelope(type, data) {
           messageId: randomUUID(),
           type,
           version: 1,
-          occurredAt: new Date().toISOString(),
+          occurredAt: new Date(occurredAt).toISOString(),
           correlationId: randomUUID(),
           producer: "catalog",
           data,
@@ -95,23 +95,31 @@ function envelope(type, data) {
   };
 }
 
-function eventPublished(eventId, { opensAt, closesAt }) {
-  return envelope("EventPublished", {
-    eventId,
-    name: "Test event",
-    salesOpensAt: new Date(opensAt).toISOString(),
-    salesClosesAt: new Date(closesAt).toISOString(),
-    sectors: [{ sectorId: randomUUID(), name: "General", capacity: 500, priceCents: 18000000, currency: "COP" }],
-  });
+function eventPublished(eventId, { opensAt, closesAt, occurredAt }) {
+  return envelope(
+    "EventPublished",
+    {
+      eventId,
+      name: "Test event",
+      salesOpensAt: new Date(opensAt).toISOString(),
+      salesClosesAt: new Date(closesAt).toISOString(),
+      sectors: [{ sectorId: randomUUID(), name: "General", capacity: 500, priceCents: 18000000, currency: "COP" }],
+    },
+    occurredAt,
+  );
 }
 
-function salesRules(eventId, openingWindowSeconds) {
-  return envelope("SalesRulesConfigured", {
-    eventId,
-    maxTicketsPerPerson: 4,
-    reservationTtlSeconds: 480,
-    openingWindowSeconds,
-  });
+function salesRules(eventId, openingWindowSeconds, occurredAt) {
+  return envelope(
+    "SalesRulesConfigured",
+    {
+      eventId,
+      maxTicketsPerPerson: 4,
+      reservationTtlSeconds: 480,
+      openingWindowSeconds,
+    },
+    occurredAt,
+  );
 }
 
 /** Seeds an event through the real push endpoints, the way Pub/Sub would. Opens a minute ago by default. */

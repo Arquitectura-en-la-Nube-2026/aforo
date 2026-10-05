@@ -103,6 +103,27 @@ redisTest("the stream announces each change of position, then admitted, over one
   assert.equal(ended, true);
 });
 
+redisTest("a stream that opens after the shutdown drain already ran is ended too, after its snapshot", async () => {
+  // stream() reads the first status before registering itself. A SIGTERM landing in that read ran the
+  // drain without it, and the stream then stayed open, holding the HTTP server past Cloud Run's ~10 s.
+  const doomed = await createListeningApp();
+  await untilRedisReady(doomed.app);
+  const eventId = await seedEvent(doomed.app);
+  const [a] = users(1);
+  await queueOf(doomed.app).join(eventId, a, Date.now());
+
+  const { ShutdownService } = require("@aforo/common/nest");
+  await doomed.app.get(ShutdownService).beforeApplicationShutdown("SIGTERM"); // the drain runs with no stream open
+
+  try {
+    const { ended, messages } = await readSse(await open(doomed.base, eventId, a), () => false, 3000);
+    assert.equal(messages.length, 1, "it still gets its snapshot");
+    assert.equal(ended, true, "the stream must end at once, not stay open after the drain");
+  } finally {
+    await doomed.app.close();
+  }
+});
+
 redisTest("shutting an instance down closes its open streams instead of waiting for them", async () => {
   // An open stream is an in-flight request: without the drain hook the HTTP server would wait for it
   // until Cloud Run kills the instance.

@@ -28,7 +28,7 @@ export class QueueStreamService {
   constructor(
     @Inject(QUEUE_CONFIG) private readonly config: QueueConfig,
     private readonly queue: QueueService,
-    shutdown: ShutdownService,
+    private readonly shutdown: ShutdownService,
   ) {
     // An open stream is an in-flight request: close them first or the HTTP server waits for them.
     shutdown.onDrain("sse-streams", async () => {
@@ -85,6 +85,10 @@ export class QueueStreamService {
     raw.on("close", finish);
     emit(first);
     if (closed) return;
+    // A SIGTERM that landed while `first` was being read ran the drain before this stream was in `open`:
+    // nothing would end it, and it would hold the HTTP server open. The snapshot is sent; the client
+    // falls back to polling, like every other stream ended by the drain.
+    if (this.shutdown.isShuttingDown) return finish();
 
     poll = setInterval(() => {
       if (reading) return; // a slow Redis must not pile up reads

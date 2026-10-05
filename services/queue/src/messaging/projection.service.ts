@@ -14,21 +14,33 @@ const EVENT_KEY_PATTERN = "event:*";
 /**
  * The local copy of what the queue needs about an event: `event:{eventId}` (README). Built from
  * EventPublished and SalesRulesConfigured, which can arrive in either order, so each writes only
- * its own fields (HSET) and neither overwrites the other.
+ * its own fields and neither overwrites the other. A message older than the last one of its kind is
+ * skipped (PROJECT_LUA): Catalog re-emits the rules when they change, and the old ones may come last.
  */
 @Injectable()
 export class ProjectionService {
   constructor(private readonly store: RedisService) {}
 
-  async applyEventPublished(data: EventPublishedData): Promise<void> {
-    await this.store.redis.hset(eventKey(data.eventId), {
-      salesOpensAt: data.salesOpensAt,
-      salesClosesAt: data.salesClosesAt,
-    });
+  async applyEventPublished(data: EventPublishedData, occurredAt: string): Promise<void> {
+    await this.store.redis.projectionUpsert(
+      eventKey(data.eventId),
+      "publishedAt",
+      Date.parse(occurredAt),
+      "salesOpensAt",
+      data.salesOpensAt,
+      "salesClosesAt",
+      data.salesClosesAt,
+    );
   }
 
-  async applySalesRules(data: SalesRulesConfiguredData): Promise<void> {
-    await this.store.redis.hset(eventKey(data.eventId), { openingWindowSeconds: String(data.openingWindowSeconds) });
+  async applySalesRules(data: SalesRulesConfiguredData, occurredAt: string): Promise<void> {
+    await this.store.redis.projectionUpsert(
+      eventKey(data.eventId),
+      "rulesAt",
+      Date.parse(occurredAt),
+      "openingWindowSeconds",
+      String(data.openingWindowSeconds),
+    );
   }
 
   /**

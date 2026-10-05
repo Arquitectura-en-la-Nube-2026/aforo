@@ -136,6 +136,22 @@ redisTest("a buyer who holds a pass keeps it even if the sale closes before they
   assert.equal((await join(state.app, eventId, newcomer)).json().code, "SALE_NOT_OPEN");
 });
 
+redisTest("a buyer still waiting when the sale closes keeps the place on re-join, as admission still serves them", async () => {
+  // Admission keeps serving the queue after the close; a re-join (a page reload) answered 409 "not open"
+  // to a buyer who was about to get a pass, while a newcomer must still get 409.
+  const closesIn = 1000;
+  const eventId = await seedEvent(state.app, { closesAt: Date.now() + closesIn });
+  const [waiter, newcomer] = users(2);
+  await queue().join(eventId, waiter, Date.now());
+  await sleep(closesIn + 200);
+
+  const rejoined = await join(state.app, eventId, waiter);
+  assert.equal(rejoined.statusCode, 201);
+  assert.equal(rejoined.json().state, "WAITING");
+  assert.equal(rejoined.json().position, 1);
+  assert.equal((await join(state.app, eventId, newcomer)).json().code, "SALE_NOT_OPEN");
+});
+
 redisTest("two ticks in the same interval admit once; the next interval admits the next batch", async () => {
   const eventId = await seedEvent(state.app);
   const [a, b, c, d] = users(4);
@@ -235,6 +251,28 @@ redisTest("a redelivered message is not applied twice, and a new message id is",
   // A different message (new messageId) with new rules is applied.
   assert.equal((await server.inject({ method: "POST", url, payload: salesRules(eventId, 45) })).statusCode, 204);
   assert.equal(await state.redis.hget(`event:${eventId}`, "openingWindowSeconds"), "45");
+});
+
+redisTest("an older message that arrives late does not overwrite a newer one", async () => {
+  // Catalog re-emits SalesRulesConfigured when the rules change, and Pub/Sub does not keep the order. The
+  // window went from 0 to 60 s; the old message (0) arriving last used to win, and the lottery was gone.
+  const eventId = randomUUID();
+  const server = state.app.getHttpAdapter().getInstance();
+  const now = Date.now();
+  const push = (url, payload) => server.inject({ method: "POST", url, payload });
+  const rulesUrl = "/internal/v1/events/queue-sales-rules";
+  const publishedUrl = "/internal/v1/events/queue-event-published";
+
+  assert.equal((await push(rulesUrl, salesRules(eventId, 60, now))).statusCode, 204);
+  assert.equal((await push(rulesUrl, salesRules(eventId, 0, now - 5000))).statusCode, 204, "acknowledged, not retried");
+  assert.equal(await state.redis.hget(`event:${eventId}`, "openingWindowSeconds"), "60");
+
+  // The same for the sale window, and each kind keeps its own clock: the old rules did not hold back
+  // a newer EventPublished, nor the other way round.
+  const closesAt = now + 60_000;
+  await push(publishedUrl, eventPublished(eventId, { opensAt: now - 1000, closesAt, occurredAt: now - 10_000 }));
+  await push(publishedUrl, eventPublished(eventId, { opensAt: now - 1000, closesAt: now - 500, occurredAt: now - 20_000 }));
+  assert.equal(await state.redis.hget(`event:${eventId}`, "salesClosesAt"), new Date(closesAt).toISOString());
 });
 
 redisTest("a message whose data breaks its schema is 400 and writes nothing", async () => {

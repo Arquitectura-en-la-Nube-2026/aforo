@@ -3,7 +3,7 @@ import { DomainError, StructuredLogger } from "@aforo/common";
 import { HealthService, ShutdownService } from "@aforo/common/nest";
 import Redis from "ioredis";
 import type { QueueConfig } from "../config/queue-config";
-import { ADMIT_LUA, JOIN_LUA, STATUS_LUA, type QueueScripts } from "../queue/queue-scripts";
+import { ADMIT_LUA, JOIN_LUA, PROJECT_LUA, STATUS_LUA, type QueueScripts } from "../queue/queue-scripts";
 
 export const QUEUE_CONFIG = "QUEUE_CONFIG";
 
@@ -64,6 +64,7 @@ export class RedisService implements OnModuleInit {
     client.defineCommand("queueJoin", { numberOfKeys: 2, lua: JOIN_LUA });
     client.defineCommand("queueStatus", { numberOfKeys: 2, lua: STATUS_LUA });
     client.defineCommand("queueAdmit", { numberOfKeys: 1, lua: ADMIT_LUA });
+    client.defineCommand("projectionUpsert", { numberOfKeys: 1, lua: PROJECT_LUA });
     // Without a listener an "error" event crashes the process. Log each distinct failure once, not
     // on every reconnect attempt.
     client.on("error", (error: Error) => {
