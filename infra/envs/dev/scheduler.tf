@@ -15,11 +15,9 @@ resource "google_cloud_scheduler_job" "housekeeping" {
   time_zone = "Etc/UTC"
   paused    = !var.env_on
 
+  # No retry_config: the default is 0 retries (the next minute is the retry). Declaring it with
+  # retry_count = 0 makes a permanent diff, because the API drops all-default blocks.
   attempt_deadline = "60s"
-
-  retry_config {
-    retry_count = 0 # the next minute is the retry
-  }
 
   http_target {
     http_method = "POST"
