@@ -1,0 +1,68 @@
+variable "name" {
+  description = "Unit name; the service is aforo-<name> and its runtime SA aforo-<name>-run."
+  type        = string
+}
+
+variable "region" {
+  type = string
+}
+
+variable "container_port" {
+  type    = number
+  default = 8080
+}
+
+variable "max_instances" {
+  description = "Per-revision cap (ADR-0005 connection budget)."
+  type        = number
+}
+
+variable "concurrency" {
+  type    = number
+  default = 80
+}
+
+variable "cpu_always_allocated" {
+  description = "Only queue: SSE and the admission timer need CPU between requests (ADR-0002)."
+  type        = bool
+  default     = false
+}
+
+variable "request_timeout_seconds" {
+  type    = number
+  default = 60
+}
+
+variable "cpu" {
+  type    = string
+  default = "1"
+}
+
+variable "memory" {
+  type    = string
+  default = "512Mi"
+}
+
+variable "env" {
+  description = "Plain environment variables. Secrets go through secret_env."
+  type        = map(string)
+  default     = {}
+}
+
+variable "secret_env" {
+  description = "Env var name => Secret Manager secret id (latest version)."
+  type        = map(string)
+  default     = {}
+}
+
+variable "public" {
+  description = "Allow unauthenticated invocation (only web and gateway)."
+  type        = bool
+  default     = false
+}
+
+variable "invokers" {
+  description = "IAM members allowed to invoke a private service, e.g. serviceAccount:..."
+  type        = list(string)
+  default     = []
+}

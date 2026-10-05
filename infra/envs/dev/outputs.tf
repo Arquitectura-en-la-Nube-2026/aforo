@@ -23,3 +23,14 @@ output "functions_bucket" {
   description = "Bucket for function source archives."
   value       = google_storage_bucket.functions.name
 }
+
+output "service_urls" {
+  value = {
+    web       = module.web.uri
+    gateway   = module.gateway.uri
+    catalog   = module.catalog.uri
+    queue     = module.queue.uri
+    orders    = module.orders.uri
+    inventory = module.inventory.uri
+  }
+}
