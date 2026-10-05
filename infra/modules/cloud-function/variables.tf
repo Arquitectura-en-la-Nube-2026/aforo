@@ -54,6 +54,12 @@ variable "env" {
   default = {}
 }
 
+variable "secret_env" {
+  description = "Env var name => Secret Manager secret id (latest version)."
+  type        = map(string)
+  default     = {}
+}
+
 variable "public" {
   type    = bool
   default = false

@@ -58,9 +58,21 @@ jobs:
         run: npm test --if-present --workspace "$FOLDER"
       - if: steps.unit.outputs.ready == 'true'
         run: npm run build --workspace "$FOLDER"
+      # The archive needs a package.json for the platform to install runtime dependencies. If the
+      # unit's build doesn't write one, derive it: workspace packages (@aforo/*) are bundled.
       - if: steps.unit.outputs.ready == 'true'
         name: Package source archive
-        run: cd "$FOLDER/dist" && zip -qr "$GITHUB_WORKSPACE/source.zip" .
+        run: |
+          if [ ! -f "$FOLDER/dist/package.json" ]; then
+            node -e '
+              const pkg = require(process.argv[1]);
+              const deps = Object.fromEntries(Object.entries(pkg.dependencies ?? {}).filter(([n]) => !n.startsWith("@aforo/")));
+              const out = { name: pkg.name.replace("@aforo/", "aforo-"), version: pkg.version, private: true, main: "index.js", engines: { node: "24" }, dependencies: deps };
+              require("fs").writeFileSync(process.argv[2], JSON.stringify(out, null, 2) + "\n");
+            ' "$GITHUB_WORKSPACE/$FOLDER/package.json" "$FOLDER/dist/package.json"
+            echo "::notice::Generated dist/package.json from $FOLDER/package.json"
+          fi
+          cd "$FOLDER/dist" && zip -qr "$GITHUB_WORKSPACE/source.zip" .
       - if: steps.unit.outputs.ready == 'true'
         uses: actions/upload-artifact@v7
         with:

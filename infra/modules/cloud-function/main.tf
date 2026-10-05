@@ -6,6 +6,15 @@ resource "google_service_account" "runtime" {
   display_name = "Runtime of aforo-${var.name}"
 }
 
+# Each runtime SA reads only its own secrets.
+resource "google_secret_manager_secret_iam_member" "runtime" {
+  for_each = toset(values(var.secret_env))
+
+  secret_id = each.value
+  role      = "roles/secretmanager.secretAccessor"
+  member    = google_service_account.runtime.member
+}
+
 # Placeholder answering 200 to any request under the real entry point, so triggers and probes
 # work before the first CI deploy.
 data "archive_file" "placeholder" {
@@ -56,7 +65,19 @@ resource "google_cloudfunctions2_function" "this" {
     timeout_seconds                  = var.timeout_seconds
     ingress_settings                 = "ALLOW_ALL"
     environment_variables            = var.env
+
+    dynamic "secret_environment_variables" {
+      for_each = var.secret_env
+      content {
+        key        = secret_environment_variables.key
+        project_id = var.project_id
+        secret     = secret_environment_variables.value
+        version    = "latest"
+      }
+    }
   }
+
+  depends_on = [google_secret_manager_secret_iam_member.runtime]
 
   lifecycle {
     # CI deploys gs://<bucket>/<name>/<sha>.zip; Terraform must not roll it back.

@@ -1,0 +1,19 @@
+name: function-mock-payment-gateway
+
+on:
+  pull_request:
+    paths: ["functions/mock-payment-gateway/**", "packages/common/**", ".github/workflows/_function.yml", ".github/workflows/function-mock-payment-gateway.yml"]
+  push:
+    branches: [main]
+    paths: ["functions/mock-payment-gateway/**", "packages/common/**", ".github/workflows/_function.yml", ".github/workflows/function-mock-payment-gateway.yml"]
+  workflow_dispatch:
+
+jobs:
+  function:
+    uses: ./.github/workflows/_function.yml
+    with:
+      function: mock-payment-gateway
+      entry_point: mockPaymentGateway
+    permissions:
+      contents: read
+      id-token: write
