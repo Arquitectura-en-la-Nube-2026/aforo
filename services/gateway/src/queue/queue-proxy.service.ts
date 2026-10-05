@@ -69,6 +69,14 @@ export class QueueProxyService {
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+    // Listened to before calling the queue service: `close` fires once, so a client that leaves while we
+    // wait for the upstream headers would otherwise go unnoticed and its upstream stream stay open.
+    let clientGone = false;
+    const done = new Promise<void>((resolve) => reply.raw.once("close", resolve));
+    void done.then(() => {
+      clientGone = true;
+      controller.abort(); // nobody will read the answer: stop asking the queue service for it
+    });
     let upstream: Response;
     try {
       upstream = await fetch(`${this.config.queueUrl}/api/v1/queue/${eventId}/${operation}`, {
@@ -79,13 +87,14 @@ export class QueueProxyService {
       });
     } catch {
       clearTimeout(timer);
+      if (clientGone) return; // aborted because the client left: there is no one to answer
       throw new DomainError("INTERNAL", "queue service unavailable");
     }
 
     const contentType = upstream.headers.get("content-type") ?? "application/json";
     if (operation === "stream" && upstream.ok && upstream.body && contentType.startsWith("text/event-stream")) {
       clearTimeout(timer); // from here on there is no response timeout: the stream lasts as long as the wait
-      this.pipeStream(upstream.body, controller, reply);
+      this.pipeStream(upstream.body, controller, done, reply);
       return;
     }
 
@@ -93,13 +102,14 @@ export class QueueProxyService {
       const body = Buffer.from(await upstream.arrayBuffer());
       reply.status(upstream.status).header("content-type", contentType).send(body);
     } catch {
+      if (clientGone) return;
       throw new DomainError("INTERNAL", "queue service unavailable");
     } finally {
       clearTimeout(timer);
     }
   }
 
-  private pipeStream(body: unknown, controller: AbortController, reply: FastifyReply): void {
+  private pipeStream(body: unknown, controller: AbortController, done: Promise<void>, reply: FastifyReply): void {
     // Through a PassThrough, so that ending the upstream (or aborting it on shutdown) ends the
     // client's stream cleanly instead of tearing the socket down mid-message.
     const out = new PassThrough();
@@ -107,13 +117,10 @@ export class QueueProxyService {
     upstream.on("error", () => out.end());
     upstream.pipe(out);
 
-    const stream = { controller, done: new Promise<void>((resolve) => reply.raw.once("close", resolve)) };
+    // `done` already aborts the upstream when the response is over (see forward).
+    const stream = { controller, done };
     this.streams.add(stream);
-    // The response is over (the client left, or the stream ended): stop reading from the queue service.
-    void stream.done.then(() => {
-      this.streams.delete(stream);
-      controller.abort();
-    });
+    void done.then(() => this.streams.delete(stream));
 
     reply
       .status(200)

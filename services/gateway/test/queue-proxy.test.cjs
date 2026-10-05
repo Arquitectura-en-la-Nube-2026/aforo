@@ -194,6 +194,32 @@ test("when the client leaves, the Gateway stops reading from the queue service",
   assert.equal(upstreamClosed, true, "the upstream connection leaked: every closed tab would keep one open");
 });
 
+test("a client that leaves before the queue service answers does not leave the upstream stream open", async () => {
+  // The close listener used to be added only after the upstream headers arrived. A buyer who closed the
+  // tab at 100 ms, with the queue answering at 500 ms, had already fired it: nothing aborted the upstream
+  // and the Gateway kept reading a stream nobody would receive, until that buyer was admitted.
+  const buyer = await login(app);
+  let upstreamClosed = false;
+  upstream.respond = (request, response) => {
+    request.socket.once("close", () => { upstreamClosed = true; });
+    setTimeout(() => {
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write('event: position\ndata: {"position":3}\n\n'); // and then keeps the stream open
+    }, 500);
+  };
+  const client = new AbortController();
+  const request = fetch(`${base}/api/v1/queue/${eventId}/stream`, {
+    headers: { authorization: `Bearer ${buyer.token}` },
+    signal: client.signal,
+  }).catch(() => undefined);
+  await sleep(100);
+  client.abort(); // the buyer closes the tab before the queue service answers
+  await request;
+
+  for (let i = 0; i < 30 && !upstreamClosed; i += 1) await sleep(50);
+  assert.equal(upstreamClosed, true, "the upstream connection leaked after an early disconnect");
+});
+
 test("an error from the queue before the stream starts is a normal problem+json, not an empty stream", async () => {
   const buyer = await login(app);
   upstream.respond = (request, response) => {
