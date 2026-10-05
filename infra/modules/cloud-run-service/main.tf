@@ -48,6 +48,17 @@ resource "google_cloud_run_v2_service" "this" {
       max_instance_count = var.max_instances
     }
 
+    dynamic "vpc_access" {
+      for_each = var.vpc_egress == null ? [] : [var.vpc_egress]
+      content {
+        egress = "PRIVATE_RANGES_ONLY"
+        network_interfaces {
+          network    = vpc_access.value.network
+          subnetwork = vpc_access.value.subnetwork
+        }
+      }
+    }
+
     containers {
       # Placeholder until the first CI deploy; it answers 200 on any path, so the probes pass.
       image = "us-docker.pkg.dev/cloudrun/container/hello"
