@@ -97,5 +97,9 @@ fault: tf-state ## Fault injection on the mock payment gateway (Terraform switch
 	$(call tf_apply,$(CUR_ENV_ON),$(CUR_REDIS),$(MODE))
 
 .PHONY: poison
-poison: ## Publish an invalid message to demo DLQ + dlq-monitor alert: make poison TOPIC=<topic> — TODO
-	@echo "TODO(platform): gcloud pubsub topics publish $(TOPIC) --message 'not-an-envelope'" && exit 1
+poison: ## Publish an invalid message to demo DLQ + dlq-monitor alert (E-05): make poison TOPIC=aforo.catalog.event-published
+	@test -n "$(TOPIC)" || (echo "usage: make poison TOPIC=<topic>" && exit 1)
+	@CID=$$(uuidgen | tr 'A-Z' 'a-z'); \
+	gcloud pubsub topics publish "$(TOPIC)" --project "$(PROJECT)" --message 'not-an-envelope' \
+	  --attribute "type=Poison,correlationId=$$CID" >/dev/null && \
+	echo "Published poison message, correlationId=$$CID. It dead-letters after 5 attempts (~2-3 min); then search Cloud Logging for jsonPayload.correlationId=\"$$CID\"."

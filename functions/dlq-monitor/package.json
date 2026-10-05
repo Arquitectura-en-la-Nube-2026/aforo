@@ -1,0 +1,21 @@
+{
+  "name": "@aforo/dlq-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Logs every dead-lettered Pub/Sub message as a structured ERROR line (E-05, D-17)",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@google-cloud/functions-framework": "^5.0.0"
+  },
+  "devDependencies": {
+    "@aforo/common": "*",
+    "@types/node": "^24.19.1",
+    "esbuild": "^0.28.0",
+    "typescript": "^5.8.0"
+  }
+}
