@@ -84,6 +84,18 @@ Never run `terraform apply` by hand: it would reset every switch to its default.
   | `ORDERS_WEBHOOK_URL` | mock | gateway `uri` + `/api/v1/payments/webhook` |
   | `REDIS_URL` | queue | `redis://${host}:${port}` of Memorystore, `""` when off |
 
+## Cloud SQL
+
+One instance `aforo-pg` (Postgres 17, `db-f1-micro`, 10 GB HDD, no backups) with a database and a
+user per service. Each service gets its `DATABASE_URL` from Secret Manager
+(`aforo-<service>-database-url`) and reaches the instance through the Cloud SQL connector socket
+mounted at `/cloudsql`; there are no authorized networks. To connect from a laptop, use the
+[Cloud SQL Auth Proxy](https://cloud.google.com/sql/docs/postgres/sql-proxy) with
+`aforo-dev-teamf:southamerica-east1:aforo-pg` and `DB_POOL_MAX=1`.
+
+Databases and users can only be created while the instance runs, so the first apply that adds
+them is `make up`, not `make apply`.
+
 ## Sizing and connection budget (ADR-0005)
 
 `db-f1-micro` allows 25 connections, 3 reserved: 22 usable. Instance caps and pools are set

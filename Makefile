@@ -84,7 +84,7 @@ redis-down: tf-state ## Destroy Memorystore; the rest stays as it is
 
 .PHONY: seed
 seed: ## Run the idempotent catalog seed against dev — TODO
-	@echo "TODO(catalog): services/catalog/seed" && exit 1
+	@echo "WARNING: seed not implemented yet (TODO(catalog): services/catalog/seed); skipping"
 
 .PHONY: deploy
 deploy: ## Build and deploy one service: make deploy SERVICE=orders — TODO (CI does this on main)

@@ -1,6 +1,6 @@
 # The five services and web (infra/README.md: sizing from ADR-0005, wiring from ADR-0004).
-# Env vars that need resources not declared yet (Cloud SQL, secrets, Pub/Sub, Cloud Tasks,
-# Memorystore, functions) are added together with those resources.
+# Env vars that need resources not declared yet (Pub/Sub, Cloud Tasks, Memorystore, functions)
+# are added together with those resources.
 
 data "google_project" "this" {}
 
@@ -23,6 +23,7 @@ module "web" {
   source = "../../modules/cloud-run-service"
 
   name           = "web"
+  project_id     = var.project_id
   region         = var.region
   container_port = 4000
   max_instances  = 2
@@ -38,9 +39,14 @@ module "gateway" {
   source = "../../modules/cloud-run-service"
 
   name          = "gateway"
+  project_id    = var.project_id
   region        = var.region
   max_instances = 3
   public        = true
+
+  secret_env = {
+    AUTH_SECRET = google_secret_manager_secret.auth.secret_id
+  }
 
   env = merge(local.common_env, {
     AUTH_ISSUER                = "https://gateway.aforo.dev"
@@ -59,9 +65,15 @@ module "catalog" {
   source = "../../modules/cloud-run-service"
 
   name          = "catalog"
+  project_id    = var.project_id
   region        = var.region
   max_instances = 2
   invokers      = [module.gateway.service_account_member]
+
+  cloud_sql_instance = module.cloud_sql.connection_name
+  secret_env = {
+    DATABASE_URL = module.cloud_sql.database_url_secret_ids["catalog"]
+  }
 
   env = merge(local.common_env, {
     DB_POOL_MAX                  = "2"
@@ -74,6 +86,7 @@ module "queue" {
   source = "../../modules/cloud-run-service"
 
   name                    = "queue"
+  project_id              = var.project_id
   region                  = var.region
   max_instances           = 2
   concurrency             = 250
@@ -94,9 +107,16 @@ module "orders" {
   source = "../../modules/cloud-run-service"
 
   name          = "orders"
+  project_id    = var.project_id
   region        = var.region
   max_instances = 1 # single circuit breaker (ADR-0005)
   invokers      = [module.gateway.service_account_member]
+
+  cloud_sql_instance = module.cloud_sql.connection_name
+  secret_env = {
+    DATABASE_URL   = module.cloud_sql.database_url_secret_ids["orders"]
+    WEBHOOK_SECRET = google_secret_manager_secret.webhook.secret_id
+  }
 
   env = merge(local.common_env, {
     DB_POOL_MAX              = "3"
@@ -117,12 +137,18 @@ module "inventory" {
   source = "../../modules/cloud-run-service"
 
   name          = "inventory"
+  project_id    = var.project_id
   region        = var.region
   max_instances = 3
   invokers = [
     module.gateway.service_account_member,
     module.orders.service_account_member,
   ]
+
+  cloud_sql_instance = module.cloud_sql.connection_name
+  secret_env = {
+    DATABASE_URL = module.cloud_sql.database_url_secret_ids["inventory"]
+  }
 
   env = merge(local.common_env, {
     GCP_REGION                = var.region

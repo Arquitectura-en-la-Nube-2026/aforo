@@ -6,6 +6,23 @@ resource "google_service_account" "runtime" {
   display_name = "Runtime of aforo-${var.name}"
 }
 
+# Each runtime SA reads only its own secrets.
+resource "google_secret_manager_secret_iam_member" "runtime" {
+  for_each = toset(values(var.secret_env))
+
+  secret_id = each.value
+  role      = "roles/secretmanager.secretAccessor"
+  member    = google_service_account.runtime.member
+}
+
+resource "google_project_iam_member" "cloudsql_client" {
+  count = var.cloud_sql_instance == "" ? 0 : 1
+
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = google_service_account.runtime.member
+}
+
 resource "google_cloud_run_v2_service" "this" {
   name                = "aforo-${var.name}"
   location            = var.region
@@ -65,6 +82,14 @@ resource "google_cloud_run_v2_service" "this" {
         }
       }
 
+      dynamic "volume_mounts" {
+        for_each = var.cloud_sql_instance == "" ? [] : [1]
+        content {
+          name       = "cloudsql"
+          mount_path = "/cloudsql"
+        }
+      }
+
       # Never /health/ready: a service must boot with its DB or Redis off (ADR-0004).
       startup_probe {
         http_get {
@@ -81,7 +106,20 @@ resource "google_cloud_run_v2_service" "this" {
         period_seconds = 30
       }
     }
+
+    dynamic "volumes" {
+      for_each = var.cloud_sql_instance == "" ? [] : [1]
+      content {
+        name = "cloudsql"
+        cloud_sql_instance {
+          instances = [var.cloud_sql_instance]
+        }
+      }
+    }
   }
+
+  # A revision can't start until it may read its secrets.
+  depends_on = [google_secret_manager_secret_iam_member.runtime]
 
   lifecycle {
     # CI owns the image and traffic; the pre-warmer owns the service-level minimum (ADR-0004).
