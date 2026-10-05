@@ -24,7 +24,7 @@ paths:
 - **Wiring through references, never copied URLs**: env vars that point to another resource take
   its Terraform attribute (e.g. `PAYMENT_GATEWAY_URL =
   google_cloudfunctions2_function.mock_payment_gateway.service_config[0].uri`).
-- Project `aforo-dev`, region `southamerica-east1`. Region and project are variables, never
+- Project `aforo-dev-teamf`, region `southamerica-east1`. Region and project are variables, never
   hard-coded in modules.
 - Resource names: `aforo-<service>` for Cloud Run, topics `aforo.<producer>.<fact>`,
   subscriptions `<consumer>-<fact>`, DLQs `<subscription>-dlq`. Match `contracts/events/README.md`.
