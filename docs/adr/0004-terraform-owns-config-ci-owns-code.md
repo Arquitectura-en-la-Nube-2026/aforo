@@ -22,7 +22,7 @@ Terraform, which contradicts "nothing outside IaC".
 | Every resource, env vars, secrets, scaling, probes, IAM, VPC | Terraform | `make apply` |
 | Container image of services and web | CI | `gcloud run deploy --image <repo>@<digest> --no-traffic --tag sha-<short>` |
 | Traffic split of services and web | CI | smoke on the tag URL, then `gcloud run services update-traffic --to-latest` |
-| Source of functions | CI | `gcloud functions deploy <fn> --source gs://aforo-dev-functions/<fn>/<sha>.zip` (source flag only, never env flags) |
+| Source of functions | CI | `gcloud functions deploy <fn> --source gs://aforo-dev-teamf-functions/<fn>/<sha>.zip` (source flag only, never env flags) |
 | Runtime switches (`env_on`, `redis_enabled`, `mock_fault_mode`) | Terraform variables | only through `make up/down/redis-up/redis-down/fault` |
 | Service-level minimum instances of `gateway` and `queue` | `functions/prewarmer` (D-21) | Cloud Run Admin API, `scaling.minInstanceCount`, warm before each sales window and back to 0 after |
 
