@@ -11,7 +11,7 @@ Workload Identity Federation — no service-account keys in the repo.
 | `common.yml` | `packages/common/**` | lint, test, build | publish/build | TODO |
 | `service-<name>.yml` ×5 | `services/<name>/**`, `packages/common/**` | lint, test, docker build | lint, test, docker build; deploy (push by SHA, `--no-traffic --tag`, smoke, `--to-latest`) only if `DEPLOY_ON_MERGE=true` or run by hand | ✅ in place |
 | `web.yml` | `apps/web/**` | lint, test, build | same as services for `aforo-web` | ✅ in place |
-| `function-<name>.yml` ×3 | `functions/<name>/**`, `packages/common/**` | lint, test, bundle | upload `<sha>.zip`, `gcloud functions deploy --source` (no env flags), smoke | TODO |
+| `function-<name>.yml` ×3 | `functions/<name>/**`, `packages/common/**` | lint, test, bundle | lint, test, bundle; deploy (upload `<sha>.zip`, `gcloud functions deploy --source`, no env flags) only if `DEPLOY_ON_MERGE=true` or run by hand | ✅ `dlq-monitor`; others when their code lands |
 | `infra.yml` | `infra/**` | `terraform fmt -check`, `validate`, `make plan` | — (Platform runs `make apply` by hand from `main`) | ✅ in place |
 | `e2e.yml` | manual (`workflow_dispatch`) | — | run acceptance tests against `dev` | TODO |
 

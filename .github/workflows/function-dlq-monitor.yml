@@ -1,0 +1,19 @@
+name: function-dlq-monitor
+
+on:
+  pull_request:
+    paths: ["functions/dlq-monitor/**", "packages/common/**", ".github/workflows/_function.yml", ".github/workflows/function-dlq-monitor.yml"]
+  push:
+    branches: [main]
+    paths: ["functions/dlq-monitor/**", "packages/common/**", ".github/workflows/_function.yml", ".github/workflows/function-dlq-monitor.yml"]
+  workflow_dispatch:
+
+jobs:
+  function:
+    uses: ./.github/workflows/_function.yml
+    with:
+      function: dlq-monitor
+      entry_point: dlqMonitor
+    permissions:
+      contents: read
+      id-token: write
