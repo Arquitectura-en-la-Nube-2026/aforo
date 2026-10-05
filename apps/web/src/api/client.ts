@@ -1,6 +1,6 @@
 // The single place that calls `fetch`. It adds Authorization and X-Queue-Pass, turns
 // application/problem+json into ApiError, and sends the buyer to /login on a 401.
-import { ApiError } from '@/lib/errors';
+import { ApiError, parseRetryAfter } from '@/lib/errors';
 import { getToken } from '@/lib/session';
 import type { Problem } from '@/lib/types';
 
@@ -52,13 +52,21 @@ export function buildHeaders(options: RequestOptions): Headers {
 }
 
 export async function parseProblem(response: Response): Promise<ApiError> {
+  // Kept on the error because the screen cannot read it later: a 429 says how long to wait here.
+  const retryAfter = parseRetryAfter(response.headers.get('Retry-After'));
   try {
     const problem = (await response.json()) as Problem;
-    if (problem && typeof problem.code === 'string') return ApiError.fromProblem(problem);
+    if (problem && typeof problem.code === 'string')
+      return ApiError.fromProblem(problem, retryAfter);
   } catch {
     // Not JSON (a proxy error page, for example): fall through to the generic code below.
   }
-  return new ApiError(response.status, 'INTERNAL', response.headers.get('X-Correlation-Id'));
+  return new ApiError(
+    response.status,
+    'INTERNAL',
+    response.headers.get('X-Correlation-Id'),
+    retryAfter,
+  );
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {

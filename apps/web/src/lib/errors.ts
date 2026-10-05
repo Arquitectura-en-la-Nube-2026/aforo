@@ -6,22 +6,47 @@ export class ApiError extends Error {
   readonly status: number;
   readonly code: ErrorCode | 'NETWORK';
   readonly correlationId: string | null;
+  /** Seconds the server asked us to wait (the Retry-After of a 429), or null. */
+  readonly retryAfterSeconds: number | null;
 
-  constructor(status: number, code: ErrorCode | 'NETWORK', correlationId: string | null) {
+  constructor(
+    status: number,
+    code: ErrorCode | 'NETWORK',
+    correlationId: string | null,
+    retryAfterSeconds: number | null = null,
+  ) {
     super(`${code} (${status})`);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
     this.correlationId = correlationId;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 
-  static fromProblem(problem: Problem): ApiError {
-    return new ApiError(problem.status, problem.code, problem.correlationId ?? null);
+  static fromProblem(problem: Problem, retryAfterSeconds: number | null = null): ApiError {
+    return new ApiError(
+      problem.status,
+      problem.code,
+      problem.correlationId ?? null,
+      retryAfterSeconds,
+    );
   }
 
   static network(): ApiError {
     return new ApiError(0, 'NETWORK', null);
   }
+}
+
+/**
+ * The Retry-After header as whole seconds from now. It is either a number of seconds or an HTTP
+ * date; null when it is absent or unreadable. Never negative.
+ */
+export function parseRetryAfter(value: string | null, now = Date.now()): number | null {
+  if (!value || value.trim() === '') return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return seconds >= 0 ? Math.ceil(seconds) : null;
+  const date = Date.parse(value);
+  return Number.isNaN(date) ? null : Math.max(0, Math.ceil((date - now) / 1000));
 }
 
 /** An ApiError as plain data, so a server component can hand it to a client component. */
