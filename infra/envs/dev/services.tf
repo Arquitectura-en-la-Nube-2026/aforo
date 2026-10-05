@@ -1,6 +1,6 @@
 # The five services and web (infra/README.md: sizing from ADR-0005, wiring from ADR-0004).
-# Env vars that need resources not declared yet (Pub/Sub, Cloud Tasks, Memorystore, functions)
-# are added together with those resources.
+# Env vars that need resources not declared yet (Memorystore, functions) are added together with
+# those resources.
 
 data "google_project" "this" {}
 
@@ -68,7 +68,10 @@ module "catalog" {
   project_id    = var.project_id
   region        = var.region
   max_instances = 2
-  invokers      = [module.gateway.service_account_member]
+  invokers = [
+    module.gateway.service_account_member,
+    google_service_account.scheduler.member,
+  ]
 
   cloud_sql_instance = module.cloud_sql.connection_name
   secret_env = {
@@ -92,7 +95,10 @@ module "queue" {
   concurrency             = 250
   cpu_always_allocated    = true
   request_timeout_seconds = 3600
-  invokers                = [module.gateway.service_account_member]
+  invokers = [
+    module.gateway.service_account_member,
+    google_service_account.pubsub_push.member,
+  ]
 
   env = merge(local.common_env, {
     REDIS_URL                  = ""
@@ -110,7 +116,11 @@ module "orders" {
   project_id    = var.project_id
   region        = var.region
   max_instances = 1 # single circuit breaker (ADR-0005)
-  invokers      = [module.gateway.service_account_member]
+  invokers = [
+    module.gateway.service_account_member,
+    google_service_account.pubsub_push.member,
+    google_service_account.scheduler.member,
+  ]
 
   cloud_sql_instance = module.cloud_sql.connection_name
   secret_env = {
@@ -143,6 +153,9 @@ module "inventory" {
   invokers = [
     module.gateway.service_account_member,
     module.orders.service_account_member,
+    google_service_account.pubsub_push.member,
+    google_service_account.scheduler.member,
+    google_service_account.tasks_invoker.member,
   ]
 
   cloud_sql_instance = module.cloud_sql.connection_name
@@ -151,11 +164,12 @@ module "inventory" {
   }
 
   env = merge(local.common_env, {
-    GCP_REGION                = var.region
-    DB_POOL_MAX               = "2"
-    TOPIC_RESERVATION_EXPIRED = "aforo.inventory.reservation-expired"
-    EXPIRY_SCHEDULER          = "cloud-tasks"
-    TASKS_QUEUE               = "reservation-expiry"
-    SELF_URL                  = local.run_url.inventory
+    GCP_REGION                    = var.region
+    DB_POOL_MAX                   = "2"
+    TOPIC_RESERVATION_EXPIRED     = "aforo.inventory.reservation-expired"
+    EXPIRY_SCHEDULER              = "cloud-tasks"
+    TASKS_QUEUE                   = "reservation-expiry"
+    SELF_URL                      = local.run_url.inventory
+    TASKS_INVOKER_SERVICE_ACCOUNT = google_service_account.tasks_invoker.email
   })
 }
