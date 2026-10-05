@@ -29,7 +29,7 @@ Google Cloud. Team F — Cloud-Based Software Engineering 2026-II, Universidad N
 
 ```
 aforo/
-  apps/web/             Angular 20 SSR frontend
+  apps/web/             Next.js SSR frontend
   services/gateway/     API Gateway + simulated login
   services/catalog/     Events, sectors, sales rules + idempotent seed
   services/queue/       Waiting room and admission (Redis)

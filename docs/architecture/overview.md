@@ -4,7 +4,7 @@
 
 ```mermaid
 flowchart LR
-  B[Browser] -->|HTTPS| W[web<br/>Angular SSR]
+  B[Browser] -->|HTTPS| W[web<br/>Next.js SSR]
   B -->|HTTPS /api/v1| G[gateway<br/>login · auth · correlation · proxy]
   G --> C[catalog]
   G --> Q[queue]
