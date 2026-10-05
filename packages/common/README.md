@@ -1,10 +1,13 @@
 # @aforo/common
 
-> Owner: Juan José · Status: not started
+> Owner: Juan José · Status: initial foundation implemented
 
-Shared NestJS library that implements `contracts/conventions.md` **once**, so the five services
-behave identically. If a service needs a cross-cutting behavior that is not here, add it here —
-do not implement it locally.
+Shared NestJS library for the behaviors in `contracts/conventions.md`. The first slice implements
+the error catalog/filter, correlation context, structured request logging, and live/readiness
+health module. Other cross-cutting capabilities in the table remain planned.
+
+Request logs use Cloud Run's `K_SERVICE` as the service name. Local runs can set `SERVICE_NAME`;
+when neither exists, logs use `unknown` instead of attributing them to another service.
 
 ## What it must export
 
@@ -12,7 +15,7 @@ do not implement it locally.
 | ------ | -------- | ------- |
 | `errors` | `DomainError(code, detail)`, error-code catalog (mirrors `ErrorCode` in the contract), global `ProblemJsonFilter` | all |
 | `correlation` | Middleware reading/generating `X-Correlation-Id`, async-local context, HTTP client that forwards it | all |
-| `logging` | JSON logger with `severity`, `correlationId`, `userId`, `route`, `status`, `latencyMs`; request-log interceptor | all |
+| `logging` | JSON logger with `severity`, `correlationId`, `userId`, `route`, `status`, `latencyMs`; request-log middleware | all |
 | `auth` | `@CurrentUser()` decorator reading `X-User-Id`/`X-User-Email`; Google ID-token client for service calls; `AUTH_MODE=dev` fake token | all |
 | `idempotency` | Interceptor + repository port storing key, SHA-256 of the body, status and response; returns the stored response on repeat with `Idempotent-Replayed: true` (R-06); `IDEMPOTENCY_CONFLICT` on a different body | catalog, orders, inventory |
 | `envelope` | `EventEnvelope<T>` type, builder, and the four event type names + payload types (generated from `contracts/events/*.schema.json`) | all producers/consumers |
