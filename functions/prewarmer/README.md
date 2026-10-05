@@ -2,7 +2,7 @@
 
 > Owner: Julián (Platform) · Contract: [contracts/openapi/prewarmer.yaml](../../contracts/openapi/prewarmer.yaml)
 > Consumes: `EventPublished` ([contracts/events](../../contracts/events/README.md))
-> Decision: D-21 · Status: not started
+> Decision: D-21 · Status: implemented (handlers, tests, Terraform, CI); cold start not measured yet
 
 Realizes the Entrega 3 E-01 tactic **"pre-warming per sales window"**: the entry path already has
 instances running when a sale opens, because the opening time comes from the catalog. It fixes
@@ -68,9 +68,28 @@ Create an event through the organizer API that opens in 3 minutes and closes in 
 and show `aforo-gateway` and `aforo-queue` minimum instances go to 1 right away (the warm time is
 already past) and back to 0 at the close. Steps in [docs/runbooks/demo.md](../../docs/runbooks/demo.md).
 
+## Implementation
+
+| File | What |
+| ---- | ---- |
+| `src/window.ts` | Pure logic: envelope and task-body parsing, window math, task names, the "another window open" rule |
+| `src/handlers.ts` | The three routes, with Cloud Tasks / Cloud Run calls injected (unit-tested with a fake) |
+| `src/gcp.ts` | REST calls through one lazily created `GoogleAuth`; service-level minimum set with `PATCH …?updateMask=scaling.minInstanceCount` (verified: no new revision, other fields untouched) |
+| `src/index.ts` | `prewarmer` HTTP entry point and routing; Google API failures → `503` |
+
+- Task callbacks and pushes use the function's deterministic URL (`SELF_URL`) as the OIDC
+  audience, because Cloud Run functions have no custom audiences.
+- Terraform: `aforo-prewarmer` in `infra/envs/dev/functions.tf` (timeout 30 s, max 1 instance,
+  concurrency 1) and the `prewarmer-event-published` subscription in `messaging.tf`.
+
+```bash
+npm test --workspace functions/prewarmer
+npm run build --workspace functions/prewarmer
+```
+
 ## Permissions
 
-Service account `aforo-prewarmer`: `roles/run.developer` **only** on `aforo-gateway` and
+Service account `aforo-prewarmer-run`: `roles/run.developer` **only** on `aforo-gateway` and
 `aforo-queue`, `roles/iam.serviceAccountUser` on their runtime service accounts (required to
 update a service), enqueue/list on `prewarm-windows`, and act-as on the Cloud Tasks invoker
 service account. Only the Pub/Sub push SA and the Cloud Tasks SA may invoke it.

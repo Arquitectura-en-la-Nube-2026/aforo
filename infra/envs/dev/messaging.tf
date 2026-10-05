@@ -1,6 +1,5 @@
 # Topics, push subscriptions and DLQs from contracts/events/README.md. Every push targets
 # POST /internal/v1/events/<subscription> on its consumer with an OIDC token of aforo-pubsub-push.
-# OUT-OF-SCOPE here: prewarmer-event-published is added with the prewarmer function.
 
 resource "google_service_account" "pubsub_push" {
   account_id   = "aforo-pubsub-push"
@@ -33,6 +32,10 @@ module "topic_event_published" {
       inventory-event-published = {
         endpoint = "${local.push.inventory.base}/inventory-event-published"
         audience = local.push.inventory.audience
+      }
+      prewarmer-event-published = {
+        endpoint = "${local.prewarmer_url}/events/prewarmer-event-published"
+        audience = local.prewarmer_url
       }
     },
     {

@@ -51,6 +51,9 @@ jobs:
           cache: npm
       - if: steps.unit.outputs.ready == 'true'
         run: npm ci
+      # @aforo/common exposes its types from dist/, so build it before lint and test.
+      - if: steps.unit.outputs.ready == 'true'
+        run: npm run build --workspace packages/common
       - if: steps.unit.outputs.ready == 'true'
         run: npm run lint --if-present --workspace "$FOLDER"
       - if: steps.unit.outputs.ready == 'true'
