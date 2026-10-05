@@ -2,9 +2,14 @@
 
 > Owner: Juan José · Status: initial foundation implemented
 
-Shared NestJS library for the behaviors in `contracts/conventions.md`. The first slice implements
-the error catalog/filter, correlation context, structured request logging, and live/readiness
-health module. Other cross-cutting capabilities in the table remain planned.
+Shared NestJS library for the behaviors in `contracts/conventions.md`. Implemented: the error
+catalog/filter, correlation context, structured request logging, live/readiness health module,
+the event `envelope` (validates the Pub/Sub push body, the envelope and its `data` against the
+contract schemas), the `inbox` helper (`consumeOnce`) and `shutdown` (`ShutdownService`). The
+rest of the table remains planned.
+
+The event schemas are copied from `contracts/events` into `src/core/envelope/event-schemas.generated.ts`
+by `npm run gen:events`; a test fails when the copy drifts from the contract.
 
 Request logs use Cloud Run's `K_SERVICE` as the service name. Local runs can set `SERVICE_NAME`;
 when neither exists, logs use `unknown` instead of attributing them to another service.
@@ -21,10 +26,10 @@ when neither exists, logs use `unknown` instead of attributing them to another s
 | `envelope` | `EventEnvelope<T>` type, builder, and the four event type names + payload types (generated from `contracts/events/*.schema.json`) | all producers/consumers |
 | `outbox` | Outbox table definition, `OutboxWriter` (inside the business transaction), `OutboxPublisher.flush()` (called after commit and by housekeeping; publishes pending rows to Pub/Sub with `type` and `correlationId` attributes). **No poller** (ADR-0002) | catalog, orders, inventory |
 | `housekeeping` | Controller for `POST /internal/v1/housekeeping` that flushes the outbox and runs the sweeps each service registers | catalog, orders, inventory |
-| `inbox` | Push-subscription decorator/guard: decodes Pub/Sub push body, answers `400` to an invalid envelope (so it dead-letters), dedupes by `messageId` inside the handler's transaction | queue, orders, inventory |
+| `inbox` | `consumeOnce(store, messageId, effect)`: applies an idempotent effect once per `messageId`, marking the inbox after the effect (so a crash never drops an event). With `parsePushEnvelope` (`envelope`) it answers `400` to an invalid push body or envelope (so it dead-letters). Each service supplies its own `InboxStore` | queue, orders, inventory |
 | `health` | `HealthModule` exposing `/health/live` (process only; used by Cloud Run probes) and `/health/ready` (pluggable dependency checks) | all |
 | `http` | Outgoing HTTP client with default timeouts (connect 0.5 s, response 2 s) and problem+json error mapping | orders, gateway |
-| `shutdown` | Graceful-shutdown helpers: readiness flips to 503, drain in-flight requests, close pools and SSE streams | all services |
+| `shutdown` | `ShutdownService`: readiness flips to 503 on `SIGTERM`, `onDrain` hooks close SSE streams before the HTTP server stops, `onClose` hooks close pools after the last request, and `event=shutdown` is logged with `durationMs`. Needs `app.enableShutdownHooks()` | all services |
 
 ## Rules
 
