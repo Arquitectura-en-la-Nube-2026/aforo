@@ -105,9 +105,22 @@ jobs:
           echo "TAG_URL=$URL" >> "$GITHUB_ENV"
           echo "Tag URL: $URL" >> "$GITHUB_STEP_SUMMARY"
 
+      # gcloud can't mint ID tokens for a Workload Identity login; the auth action can. The
+      # audience is the service's custom audience (Terraform), valid on its tag URLs.
+      - id: id-token
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
+          token_format: id_token
+          id_token_audience: aforo-${{ inputs.service }}
+          id_token_include_email: true
+          create_credentials_file: false
+
       - name: Smoke test on the tag URL
+        env:
+          TOKEN: ${{ steps.id-token.outputs.id_token }}
         run: |
-          TOKEN=$(gcloud auth print-identity-token --audiences="$TAG_URL" --include-email)
           for i in 1 2 3 4 5; do
             CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$TAG_URL/health/ready")
             echo "attempt $i: $CODE"

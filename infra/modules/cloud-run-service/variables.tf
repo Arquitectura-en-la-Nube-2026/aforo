@@ -76,3 +76,12 @@ variable "cloud_sql_instance" {
   type        = string
   default     = ""
 }
+
+variable "vpc_egress" {
+  description = "Direct VPC egress (private ranges only) into this network/subnet, or null."
+  type = object({
+    network    = string
+    subnetwork = string
+  })
+  default = null
+}

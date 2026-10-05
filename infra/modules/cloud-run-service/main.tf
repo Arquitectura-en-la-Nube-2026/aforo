@@ -29,6 +29,10 @@ resource "google_cloud_run_v2_service" "this" {
   ingress             = "INGRESS_TRAFFIC_ALL"
   deletion_protection = false
 
+  # Stable ID-token audience, accepted on every URL of the service including blue/green tag URLs
+  # (the CI smoke test and service-to-service calls use it).
+  custom_audiences = ["aforo-${var.name}"]
+
   # Created at 0. For gateway and queue the pre-warmer raises it during sales windows (D-21).
   scaling {
     min_instance_count = 0
@@ -42,6 +46,17 @@ resource "google_cloud_run_v2_service" "this" {
     scaling {
       min_instance_count = 0
       max_instance_count = var.max_instances
+    }
+
+    dynamic "vpc_access" {
+      for_each = var.vpc_egress == null ? [] : [var.vpc_egress]
+      content {
+        egress = "PRIVATE_RANGES_ONLY"
+        network_interfaces {
+          network    = vpc_access.value.network
+          subnetwork = vpc_access.value.subnetwork
+        }
+      }
     }
 
     containers {
