@@ -6,6 +6,9 @@ Shared NestJS library for the behaviors in `contracts/conventions.md`. The first
 the error catalog/filter, correlation context, structured request logging, and live/readiness
 health module. Other cross-cutting capabilities in the table remain planned.
 
+Request logs use Cloud Run's `K_SERVICE` as the service name. Local runs can set `SERVICE_NAME`;
+when neither exists, logs use `unknown` instead of attributing them to another service.
+
 ## What it must export
 
 | Module | Provides | Used by |

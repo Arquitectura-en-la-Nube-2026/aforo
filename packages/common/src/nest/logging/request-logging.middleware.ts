@@ -4,7 +4,7 @@ import { getCorrelationStore } from "../../core/correlation/correlation-context"
 import { StructuredLogger } from "../../core/logging/structured-logger";
 
 export class RequestLoggingMiddleware implements NestMiddleware {
-  private readonly logger = new StructuredLogger(process.env.SERVICE_NAME ?? "gateway");
+  private readonly logger = new StructuredLogger(process.env.K_SERVICE ?? process.env.SERVICE_NAME ?? "unknown");
 
   use(request: IncomingMessage, response: ServerResponse, next: () => void): void {
     const context = getCorrelationStore();
