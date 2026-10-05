@@ -42,6 +42,7 @@ infra/
 | Cloud Tasks | 3 queues: `reservation-expiry`, `payment-webhooks`, `prewarm-windows` | Negligible |
 | Cloud Scheduler | 3 jobs → `POST /internal/v1/housekeeping` on catalog, inventory, orders every minute; paused when `env_on = false` (ADR-0002) | Free tier (3 jobs) |
 | Cloud Run functions | 3: `prewarmer` (Pub/Sub push + Cloud Tasks, D-21), `dlq-monitor` (Pub/Sub trigger via Eventarc), `mock-payment-gateway` (HTTP, test double) | Nothing (scale to zero). While a window is warm, `gateway` and `queue` keep 1 instance (≤ `PREWARM_HOLD_SECONDS`, 1 h) |
+| Firestore (Native) | `(default)` database, collection `payments` of `mock-payment-gateway` only | Free tier (storage of a few test documents) |
 | Cloud Monitoring | log-based metric + alert policy for dead letters | Free tier |
 | Cloud Storage | bucket for function sources (versioned) | Cents |
 | Secret Manager | login secret, webhook HMAC secret, DB passwords | Cents |

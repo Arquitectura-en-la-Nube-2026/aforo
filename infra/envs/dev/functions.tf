@@ -161,3 +161,80 @@ resource "google_service_account_iam_member" "prewarmer_acts_as_tasks_invoker" {
   role               = "roles/iam.serviceAccountUser"
   member             = module.prewarmer.service_account_member
 }
+
+# ---- mock-payment-gateway (D-16: a test double, not a FaaS component) -------------
+# FAULT_MODE follows the mock_fault_mode switch (make fault MODE=…, ADR-0004).
+
+resource "google_project_service" "firestore" {
+  service            = "firestore.googleapis.com"
+  disable_on_destroy = false
+}
+
+# Payment state of the mock (collection `payments`).
+resource "google_firestore_database" "default" {
+  name        = "(default)"
+  location_id = var.region
+  type        = "FIRESTORE_NATIVE"
+
+  depends_on = [google_project_service.firestore]
+}
+
+locals {
+  mock_payment_gateway_url = "https://aforo-mock-payment-gateway-${data.google_project.this.number}.${var.region}.run.app"
+}
+
+module "mock_payment_gateway" {
+  source = "../../modules/cloud-function"
+
+  name                  = "mock-payment-gateway"
+  project_id            = var.project_id
+  region                = var.region
+  entry_point           = "mockPaymentGateway"
+  source_bucket         = google_storage_bucket.functions.name
+  build_service_account = google_service_account.functions_build.id
+  timeout_seconds       = 30
+  invokers = [
+    module.orders.service_account_member,  # POST /payments, refunds
+    module.gateway.service_account_member, # browser checkout pages via /mock-gateway/**
+    google_service_account.tasks_invoker.member,
+  ]
+
+  env = {
+    LOG_LEVEL                     = "info"
+    GCP_PROJECT_ID                = var.project_id
+    GCP_REGION                    = var.region
+    PUBLIC_BASE_URL               = "${local.run_url.gateway}/mock-gateway"
+    ORDERS_WEBHOOK_URL            = "${local.run_url.gateway}/api/v1/payments/webhook"
+    WEBHOOK_DELAY_SECONDS         = "2"
+    TASKS_QUEUE                   = google_cloud_tasks_queue.payment_webhooks.name
+    SELF_URL                      = local.mock_payment_gateway_url
+    TASKS_INVOKER_SERVICE_ACCOUNT = google_service_account.tasks_invoker.email
+    FAULT_MODE                    = var.mock_fault_mode
+    FAULT_DELAY_MS                = "5000"
+  }
+
+  secret_env = {
+    WEBHOOK_SECRET = google_secret_manager_secret.webhook.secret_id
+  }
+
+  depends_on = [google_project_iam_member.functions_build]
+}
+
+resource "google_project_iam_member" "mock_firestore" {
+  project = var.project_id
+  role    = "roles/datastore.user"
+  member  = module.mock_payment_gateway.service_account_member
+}
+
+resource "google_cloud_tasks_queue_iam_member" "mock_enqueuer" {
+  name     = google_cloud_tasks_queue.payment_webhooks.name
+  location = var.region
+  role     = "roles/cloudtasks.enqueuer"
+  member   = module.mock_payment_gateway.service_account_member
+}
+
+resource "google_service_account_iam_member" "mock_acts_as_tasks_invoker" {
+  service_account_id = google_service_account.tasks_invoker.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = module.mock_payment_gateway.service_account_member
+}
