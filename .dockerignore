@@ -14,3 +14,4 @@
 **/*.pem
 **/*-key.json
 **/service-account*.json
+**/.next
