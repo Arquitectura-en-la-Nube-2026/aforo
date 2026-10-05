@@ -14,16 +14,21 @@ export interface QueuePass {
 // clears the session, so a key per event alone handed Ana's pass to Ben when he signed in on the same
 // tab, and the buy screen treated it as his.
 const memory = new Map<string, QueuePass>();
-const key = (eventId: string) => `aforo.pass.${readSession()?.user.id ?? 'anonymous'}.${eventId}`;
+const key = (eventId: string, owner = readSession()?.user.id) =>
+  `aforo.pass.${owner ?? 'anonymous'}.${eventId}`;
 
 function isLive(pass: QueuePass): boolean {
   return new Date(pass.passExpiresAt).getTime() > Date.now();
 }
 
-export function savePass(eventId: string, pass: QueuePass) {
-  memory.set(key(eventId), pass);
+/**
+ * `owner` is the buyer who queued for the pass. The queue screen passes it: the session is shared by
+ * every tab, so whoever is signed in when the admission arrives may already be someone else.
+ */
+export function savePass(eventId: string, pass: QueuePass, owner = readSession()?.user.id) {
+  memory.set(key(eventId, owner), pass);
   try {
-    window.sessionStorage.setItem(key(eventId), JSON.stringify(pass));
+    window.sessionStorage.setItem(key(eventId, owner), JSON.stringify(pass));
   } catch {
     // sessionStorage blocked: the pass survives only until reload.
   }

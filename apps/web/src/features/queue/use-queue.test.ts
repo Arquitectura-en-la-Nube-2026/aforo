@@ -181,6 +181,33 @@ describe('useQueue: following the position', () => {
     expect(getQueueStatus).not.toHaveBeenCalled(); // and does not start polling
   });
 
+  it('keeps the pass for the buyer who joined, even if another tab signs in as someone else meanwhile', async () => {
+    // The session lives in localStorage, shared by every tab. Saving under whoever is signed in when the
+    // admission arrives put Ana's pass under Ben, and Ben's buy screen took it as his.
+    vi.mocked(joinQueue).mockResolvedValue(waiting(1));
+    const streams = streamsOpened();
+    mount();
+    await advance();
+
+    saveSession({
+      accessToken: 't2',
+      tokenType: 'Bearer',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      user: { id: 'ben', email: 'ben@example.com', displayName: 'Ben' },
+    });
+    await act(async () => streams[0].push(message('admitted', admitted('p_ana'))));
+    await advance();
+    expect(getPass(EVENT)).toBeNull(); // Ben has no pass
+
+    saveSession({
+      accessToken: 't',
+      tokenType: 'Bearer',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      user: { id: 'ana', email: 'ana@example.com', displayName: 'Ana' },
+    });
+    expect(getPass(EVENT)?.passToken).toBe('p_ana');
+  });
+
   it('is not fooled by an admitted event whose line break arrives split between two chunks', async () => {
     vi.mocked(joinQueue).mockResolvedValue(waiting(1));
     const streams = streamsOpened();
@@ -333,6 +360,20 @@ describe('useQueue: losing the connection', () => {
     expect(result.current.offline).toBe(false);
   });
 
+  it('waits out a 429 on the stream too, instead of polling into the same quota at once', async () => {
+    vi.mocked(openQueueStream)
+      .mockReset()
+      .mockRejectedValue(apiError('RATE_LIMITED', 429, 20));
+    vi.mocked(getQueueStatus).mockResolvedValue(waiting(6));
+    mount();
+    await advance();
+    expect(getQueueStatus).not.toHaveBeenCalled();
+    await advance(19_000);
+    expect(getQueueStatus).not.toHaveBeenCalled();
+    await advance(1_500);
+    expect(getQueueStatus).toHaveBeenCalledTimes(1);
+  });
+
   it('honours a 429 without Retry-After at the normal pace, and caps an absurd one', async () => {
     vi.mocked(getQueueStatus)
       .mockRejectedValueOnce(apiError('RATE_LIMITED', 429, null))
@@ -414,6 +455,29 @@ describe('useQueue: leaving and coming back', () => {
     expect(result.current.phase).toBe('admitted');
     expect(getPass(EVENT)?.passToken).toBe('p_woke');
     expect(streams[0].signal.aborted).toBe(true);
+  });
+
+  it('keeps the admission when a status that left before it arrives late', async () => {
+    // The tab came back, a status went out (WAITING at that moment), the stream then said admitted, and
+    // the late status took the screen back to "position 1" with nothing left running to correct it.
+    vi.mocked(joinQueue).mockResolvedValue(waiting(2));
+    const streams = streamsOpened();
+    let answerLate!: (status: QueueStatus) => void;
+    vi.mocked(getQueueStatus).mockReturnValue(new Promise((resolve) => (answerLate = resolve)));
+    const { result } = mount();
+    await advance();
+
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await act(async () => streams[0].push(message('admitted', admitted('p_first'))));
+    await advance();
+    expect(result.current.phase).toBe('admitted');
+
+    await act(async () => answerLate(waiting(1)));
+    await advance();
+    expect(result.current.phase).toBe('admitted');
+    expect(result.current.status?.state).toBe('ADMITTED');
   });
 
   it('does not ask while the tab is hidden', async () => {

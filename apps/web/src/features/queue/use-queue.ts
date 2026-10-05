@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { getQueueStatus, joinQueue, openQueueStream } from '@/api/endpoints';
 import { ApiError } from '@/lib/errors';
 import { clearPass, savePass } from '@/lib/pass';
+import { readSession } from '@/lib/session';
 import { readSse } from '@/lib/sse';
 import type { QueueStatus } from '@/lib/types';
 
@@ -58,6 +59,12 @@ function parseStatus(data: string): QueueStatus {
 const isNotFound = (failure: unknown) =>
   failure instanceof ApiError && failure.code === 'NOT_FOUND';
 
+/** How long a 429 asks us to wait: its Retry-After, never less than a poll, never more than MAX_WAIT_MS. */
+const rateLimitWaitMs = (failure: unknown): number | null =>
+  failure instanceof ApiError && failure.code === 'RATE_LIMITED'
+    ? Math.min(Math.max((failure.retryAfterSeconds ?? 0) * 1000, POLL_MS), MAX_WAIT_MS)
+    : null;
+
 export interface QueueState {
   phase: QueuePhase;
   status: QueueStatus | null;
@@ -86,6 +93,9 @@ export function useQueue(eventId: string): QueueState {
     const controller = new AbortController();
     const { signal } = controller;
     let failures = 0;
+    // The buyer who queued. Another tab may sign in as someone else before the admission arrives.
+    const owner = readSession()?.user.id;
+    let admittedOnce = false;
 
     const reachable = () => {
       failures = 0;
@@ -94,10 +104,14 @@ export function useQueue(eventId: string): QueueState {
 
     /** Applies one status. Returns true when the buyer has been admitted. */
     const apply = (next: QueueStatus): boolean => {
+      // Admission is final: a status sent before it (the one asked when the tab came back) may arrive
+      // after it, and must not take the screen back to "waiting" with nothing left running.
+      if (admittedOnce) return true;
       setStatus(next);
       if (next.state === 'ADMITTED') {
         if (!next.passToken || !next.passExpiresAt) throw new BrokenAnswer();
-        savePass(eventId, { passToken: next.passToken, passExpiresAt: next.passExpiresAt });
+        savePass(eventId, { passToken: next.passToken, passExpiresAt: next.passExpiresAt }, owner);
+        admittedOnce = true;
         setPhase('admitted');
         return true;
       }
@@ -151,12 +165,10 @@ export function useQueue(eventId: string): QueueState {
           if (signal.aborted) return false;
           if (failure instanceof BrokenAnswer) throw failure;
           if (isNotFound(failure)) throw new PlaceLost();
-          if (failure instanceof ApiError && failure.code === 'RATE_LIMITED') {
+          const rateLimited = rateLimitWaitMs(failure);
+          if (rateLimited !== null) {
             // The server is up and asked us to slow down: wait as long as it said, it is not an outage.
-            waitMs = Math.min(
-              Math.max((failure.retryAfterSeconds ?? 0) * 1000, POLL_MS),
-              MAX_WAIT_MS,
-            );
+            waitMs = rateLimited;
           } else {
             // A 401 is handled globally. Anything else counts toward "offline" and is retried.
             failures += 1;
@@ -184,6 +196,9 @@ export function useQueue(eventId: string): QueueState {
             if (signal.aborted) return;
             if (failure instanceof BrokenAnswer) throw failure;
             if (isNotFound(failure)) throw new PlaceLost();
+            // A 429 here shares the quota with `status`: polling at once would only get another 429.
+            const rateLimited = rateLimitWaitMs(failure);
+            if (rateLimited !== null) await sleep(rateLimited, signal);
             // Stream refused or cut: plan B for a while, then try the stream again.
           }
           if (signal.aborted || (await poll())) return;
