@@ -12,7 +12,7 @@
     "apps/*"
   ],
   "scripts": {
-    "build": "npm run build --workspace=@aforo/common && npm run build --workspace=@aforo/gateway && npm run build --workspace=@aforo/queue",
+    "build": "npm run build --workspace=@aforo/common && npm run build --workspace=@aforo/gateway",
     "build:common": "npm run build --workspace=@aforo/common",
     "build:gateway": "npm run build --workspace=@aforo/gateway",
     "build:queue": "npm run build --workspace=@aforo/queue",
