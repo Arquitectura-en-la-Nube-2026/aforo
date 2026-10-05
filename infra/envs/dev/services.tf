@@ -1,6 +1,5 @@
 # The five services and web (infra/README.md: sizing from ADR-0005, wiring from ADR-0004).
-# Env vars that need resources not declared yet (Memorystore, functions) are added together with
-# those resources.
+# Env vars that need resources not declared yet (functions) are added together with them.
 
 data "google_project" "this" {}
 
@@ -100,8 +99,13 @@ module "queue" {
     google_service_account.pubsub_push.member,
   ]
 
+  vpc_egress = {
+    network    = google_compute_network.aforo.id
+    subnetwork = google_compute_subnetwork.aforo.id
+  }
+
   env = merge(local.common_env, {
-    REDIS_URL                  = ""
+    REDIS_URL                  = module.memorystore.url
     ADMISSION_BATCH_SIZE       = "500"
     ADMISSION_INTERVAL_SECONDS = "5"
     PASS_TTL_SECONDS           = "600"
