@@ -31,23 +31,40 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      ready: ${{ steps.unit.outputs.ready }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      # A unit that isn't scaffolded yet (no Dockerfile or no root lock file) is skipped, not failed.
+      - id: unit
+        run: |
+          if [ -f "$FOLDER/Dockerfile" ] && [ -f package-lock.json ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$FOLDER has no Dockerfile or the repo has no package-lock.json yet; skipping"
+          fi
+      - if: steps.unit.outputs.ready == 'true'
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
-      - run: npm run lint --if-present --workspace "$FOLDER"
-      - run: npm test --if-present --workspace "$FOLDER"
-      - name: Docker build
+      - if: steps.unit.outputs.ready == 'true'
+        run: npm ci
+      - if: steps.unit.outputs.ready == 'true'
+        run: npm run lint --if-present --workspace "$FOLDER"
+      - if: steps.unit.outputs.ready == 'true'
+        run: npm test --if-present --workspace "$FOLDER"
+      - if: steps.unit.outputs.ready == 'true'
+        name: Docker build
         run: docker build -f "$FOLDER/Dockerfile" -t "${{ inputs.service }}:ci" .
 
   deploy:
     needs: check
     if: >-
+      needs.check.outputs.ready == 'true' && (
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ON_MERGE == 'true')
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ON_MERGE == 'true'))
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-${{ inputs.service }}
