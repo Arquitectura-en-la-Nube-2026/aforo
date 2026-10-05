@@ -45,23 +45,27 @@ through the tokens above; there is no custom component system.
 
 ## States per screen
 
-| Screen | States covered                                                                                                    |
-| ------ | ----------------------------------------------------------------------------------------------------------------- |
-| Login  | empty, field errors (email format, name), API error with `correlationId`, session expired banner                  |
-| Events | list, empty, API unreachable (retry)                                                                              |
-| Detail | sale `OPEN` / `SCHEDULED` / `CLOSED`, signed out, already admitted, sector sold out, not found                    |
-| Queue  | joining, waiting (SSE live / polling fallback), admitted + pass countdown, pass expired, sale not open, API error |
-| Buy    | no pass, pass expired, nothing chosen, quantity limits, `SOLD_OUT`, `LIMIT_EXCEEDED`, generic error               |
-| Pay    | payable + reservation countdown, not payable (expired / already paid), payment error                              |
-| Order  | pending, confirming payment, `PAID`, `EXPIRED`, `REFUND_PENDING`                                                  |
-| Orders | list, empty, load more, API error                                                                                 |
+| Screen | States covered                                                                                                                                                       |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Login  | empty, field errors (email format, name), API error with `correlationId`, session expired banner                                                                     |
+| Events | list, empty, API unreachable (retry)                                                                                                                                 |
+| Detail | sale `OPEN` / `SCHEDULED` / `CLOSED`, signed out, already admitted, sector sold out, not found                                                                       |
+| Queue  | joining, waiting (SSE live / polling fallback / offline notice), admitted + pass countdown, pass expired, place lost (the queue restarted), sale not open, API error |
+| Buy    | no pass, pass expired, nothing chosen, quantity limits, `SOLD_OUT`, `LIMIT_EXCEEDED`, generic error                                                                  |
+| Pay    | payable + reservation countdown, not payable (expired / already paid), payment error                                                                                 |
+| Order  | pending, confirming payment, `PAID`, `EXPIRED`, `REFUND_PENDING`                                                                                                     |
+| Orders | list, empty, load more, API error                                                                                                                                    |
 
 ## Accessibility
 
 - Keyboard: skip link, visible focus ring on every control, minimum target 44 px.
 - Screen readers: position and countdown are **not** announced every tick. The queue speaks when it
   is the buyer's turn and when the position is 5 or fewer or a multiple of 10; countdowns speak at
-  60 s and 10 s. Focus moves to the new heading when the turn arrives, expires or the sale is closed.
+  60 s and 10 s. Focus moves to the new heading when the turn arrives, expires, the place is lost
+  or the sale is closed. When the connection drops the queue says so (visible notice and a polite
+  announcement): a blind buyer would otherwise hear nothing while the number stops changing.
+- Every queue state has exactly one level-1 heading. The progress bar is named for what it measures
+  ("Avance en la fila") and reads as a percentage; the position number is named by the heading before it.
 - Status never relies on colour alone (every badge carries text); motion respects
   `prefers-reduced-motion`.
 - Lighthouse (mobile, production build, event page): Accessibility 100, Best Practices 100, SEO 100.
