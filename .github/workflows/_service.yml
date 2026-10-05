@@ -1,0 +1,109 @@
+name: service (reusable)
+
+# Build, test and deploy one Cloud Run service with blue/green (D-19,
+# docs/architecture/build-and-deploy.md). Called by the thin service-<name>.yml files.
+#
+# The deploy job runs only when started by hand (workflow_dispatch) or, on merge to main, when
+# the repo variable DEPLOY_ON_MERGE is "true". Off by default to keep main merges free.
+
+on:
+  workflow_call:
+    inputs:
+      service:
+        description: Unit folder under services/ and Cloud Run name aforo-<service>
+        required: true
+        type: string
+      folder:
+        description: Unit folder (services/<service> unless overridden, e.g. apps/web)
+        required: false
+        type: string
+
+env:
+  PROJECT_ID: aforo-dev-teamf
+  REGION: southamerica-east1
+  REGISTRY: southamerica-east1-docker.pkg.dev/aforo-dev-teamf/aforo
+  WIF_PROVIDER: projects/68220265740/locations/global/workloadIdentityPools/github/providers/aforo-repo
+  WIF_SERVICE_ACCOUNT: github-ci@aforo-dev-teamf.iam.gserviceaccount.com
+  FOLDER: ${{ inputs.folder || format('services/{0}', inputs.service) }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint --if-present --workspace "$FOLDER"
+      - run: npm test --if-present --workspace "$FOLDER"
+      - name: Docker build
+        run: docker build -f "$FOLDER/Dockerfile" -t "${{ inputs.service }}:ci" .
+
+  deploy:
+    needs: check
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ON_MERGE == 'true')
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-${{ inputs.service }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SERVICE: aforo-${{ inputs.service }}
+      IMAGE: southamerica-east1-docker.pkg.dev/aforo-dev-teamf/aforo/${{ inputs.service }}
+      TAG: sha-${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+
+      # Immutable artifact: tagged with the full git SHA, deployed by digest.
+      - name: Build and push
+        run: |
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          docker build -f "$FOLDER/Dockerfile" -t "$IMAGE:${{ github.sha }}" .
+          docker push "$IMAGE:${{ github.sha }}"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:${{ github.sha }}")
+          echo "DIGEST=$DIGEST" >> "$GITHUB_ENV"
+          echo "Image: $DIGEST" >> "$GITHUB_STEP_SUMMARY"
+
+      # Blue/green: new revision with no traffic, reachable only on its tag URL.
+      - name: Deploy without traffic
+        run: |
+          SHORT=${GITHUB_SHA::7}
+          gcloud run deploy "$SERVICE" --image "$DIGEST" --region "$REGION" \
+            --no-traffic --tag "sha-$SHORT" --quiet
+          URL=$(gcloud run services describe "$SERVICE" --region "$REGION" \
+            --format='value(status.traffic[].url)' | tr ';' '\n' | grep "sha-$SHORT---" | head -1)
+          echo "TAG_URL=$URL" >> "$GITHUB_ENV"
+          echo "Tag URL: $URL" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test on the tag URL
+        run: |
+          TOKEN=$(gcloud auth print-identity-token --audiences="$TAG_URL" --include-email)
+          for i in 1 2 3 4 5; do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$TAG_URL/health/ready")
+            echo "attempt $i: $CODE"
+            [ "$CODE" = 200 ] && exit 0
+            sleep 5
+          done
+          echo "::error::/health/ready did not return 200; traffic stays on the previous revision"
+          exit 1
+
+      - name: Shift traffic
+        run: |
+          gcloud run services update-traffic "$SERVICE" --region "$REGION" --to-latest --quiet
+          {
+            echo "Traffic: 100% to the new revision."
+            echo "Rollback: \`gcloud run services update-traffic $SERVICE --region $REGION --to-revisions <previous>=100\`"
+          } >> "$GITHUB_STEP_SUMMARY"

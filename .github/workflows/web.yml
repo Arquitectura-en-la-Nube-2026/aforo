@@ -1,0 +1,19 @@
+name: web
+
+on:
+  pull_request:
+    paths: ["apps/web/**", ".github/workflows/_service.yml", ".github/workflows/web.yml"]
+  push:
+    branches: [main]
+    paths: ["apps/web/**", ".github/workflows/_service.yml", ".github/workflows/web.yml"]
+  workflow_dispatch:
+
+jobs:
+  service:
+    uses: ./.github/workflows/_service.yml
+    with:
+      service: web
+      folder: apps/web
+    permissions:
+      contents: read
+      id-token: write
