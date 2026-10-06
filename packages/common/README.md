@@ -26,10 +26,19 @@ when neither exists, logs use `unknown` instead of attributing them to another s
 | `envelope` | `EventEnvelope<T>` type, builder, and the four event type names + payload types (generated from `contracts/events/*.schema.json`) | all producers/consumers |
 | `outbox` | Outbox table definition, `OutboxWriter` (inside the business transaction), `OutboxPublisher.flush()` (called after commit and by housekeeping; publishes pending rows to Pub/Sub with `type` and `correlationId` attributes). **No poller** (ADR-0002) | catalog, orders, inventory |
 | `housekeeping` | Controller for `POST /internal/v1/housekeeping` that flushes the outbox and runs the sweeps each service registers | catalog, orders, inventory |
-| `inbox` | `consumeOnce(store, messageId, effect)`: applies an idempotent effect once per `messageId`, marking the inbox after the effect (so a crash never drops an event). With `parsePushEnvelope` (`envelope`) it answers `400` to an invalid push body or envelope (so it dead-letters). Each service supplies its own `InboxStore` | queue, orders, inventory |
+| `inbox` | `consumeOnce(store, messageId, effect)` inserts the inbox row and applies the effect in the same database transaction. The service supplies a transactional `InboxStore` with a unique `message_id`; the effect receives and uses that transaction. Queue must use an atomic Redis Lua script instead. `parsePushEnvelope` rejects invalid push messages with `400` | orders, inventory; queue uses the envelope and needs an atomic Redis script |
 | `health` | `HealthModule` exposing `/health/live` (process only; used by Cloud Run probes) and `/health/ready` (pluggable dependency checks) | all |
 | `http` | Outgoing HTTP client with default timeouts (connect 0.5 s, response 2 s) and problem+json error mapping | orders, gateway |
 | `shutdown` | `ShutdownService`: readiness flips to 503 on `SIGTERM`, `onDrain` hooks close SSE streams before the HTTP server stops, `onClose` hooks close pools after the last request, and `event=shutdown` is logged with `durationMs`. Needs `app.enableShutdownHooks()` | all services |
+
+## Inbox transaction boundary
+
+The database adapter's `transaction` must commit only when its callback succeeds and roll back on
+error. Its `insertIfAbsent` must use a unique `message_id` (for example `INSERT ... ON CONFLICT DO
+NOTHING RETURNING message_id`). The effect must use the transaction argument passed to it; using a
+separate connection would reopen the crash window. Only return 2xx to Pub/Sub after the transaction
+commits. Queue's Redis projection and inbox key must be updated together in one Lua script; separate
+`EXISTS`, projection and `SET` commands do not satisfy the event contract.
 
 ## Rules
 
