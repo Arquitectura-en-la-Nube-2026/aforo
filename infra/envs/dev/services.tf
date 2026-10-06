@@ -45,6 +45,12 @@ module "gateway" {
   # Proxies the queue's SSE stream: same limit as queue, or Cloud Run cuts it every minute.
   request_timeout_seconds = 3600
 
+  # Per-IP quota counters in Memorystore (ADR-0001, amended): not enforced while REDIS_URL is "".
+  vpc_egress = {
+    network    = google_compute_network.aforo.id
+    subnetwork = google_compute_subnetwork.aforo.id
+  }
+
   secret_env = {
     AUTH_SECRET = google_secret_manager_secret.auth.secret_id
   }
@@ -58,6 +64,7 @@ module "gateway" {
     ORDERS_URL                 = module.orders.uri
     INVENTORY_URL              = module.inventory.uri
     MOCK_PAYMENT_GATEWAY_URL   = module.mock_payment_gateway.uri
+    REDIS_URL                  = module.memorystore.url
     RATE_LIMIT_QUEUE_PER_MIN   = "60"
     RATE_LIMIT_DEFAULT_PER_MIN = "600"
   })

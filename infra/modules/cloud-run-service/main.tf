@@ -142,6 +142,7 @@ resource "google_cloud_run_v2_service" "this" {
     # sets it at creation.
     ignore_changes = [
       template[0].containers[0].image,
+      template[0].revision, # set by gcloud run deploy --tag
       traffic,
       client,
       client_version,
