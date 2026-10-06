@@ -112,6 +112,21 @@ curl -X POST localhost:8080/api/v1/queue/8f1b2c3d-0000-4000-8000-000000000001/jo
 
 `X-User-Id` must be a UUID: it is what the Gateway forwards, and it is the sorted-set member.
 
+## In `dev`
+
+- **Deploy with Redis on.** The CI smoke test needs `/health/ready` = 200 (`.github/workflows/_service.yml`),
+  and without Redis it is 503 by design. So run `make redis-up` first, then `make deploy SERVICE=queue`.
+  A deploy that failed this way cannot be retried at the same commit: tags in Artifact Registry are
+  immutable and every build has a new digest, so the push is rejected until there is a new commit.
+- **Seed an event.** `make seed` is still a TODO (Catalog), so the projection starts empty and every `join`
+  answers 404. Until Catalog exists, push one through the script with an ID token of an account allowed to
+  invoke `aforo-queue` (the queue is private):
+
+```bash
+node scripts/seed-event.mjs --url https://aforo-queue-<project-number>.southamerica-east1.run.app \
+     --token "$(gcloud auth print-identity-token)"
+```
+
 ## Tests
 
 `npm test --workspace=@aforo/queue` needs a real Redis, because the rules worth testing (the scripts,

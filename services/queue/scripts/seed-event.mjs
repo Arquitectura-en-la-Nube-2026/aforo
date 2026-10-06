@@ -4,8 +4,13 @@
 //   node scripts/seed-event.mjs                         event 8f1b2c3d-...-01, open now, closes in 1 h
 //   node scripts/seed-event.mjs --opens-in 30 --window 10
 //
+// In `dev` the queue is private (Cloud Run IAM): pass an ID token of an account allowed to invoke it,
+// or Cloud Run answers 403 before the push endpoints see anything.
+//   node scripts/seed-event.mjs --url https://aforo-queue-<project-number>.southamerica-east1.run.app \
+//     --token "$(gcloud auth print-identity-token)"
+//
 // Options: --url (default http://127.0.0.1:8080), --event, --opens-in <seconds, negative = already open>,
-// --closes-in <seconds>, --window <opening window seconds>.
+// --closes-in <seconds>, --window <opening window seconds>, --token <ID token, sent as a bearer token>.
 import { randomUUID } from "node:crypto";
 
 const args = Object.fromEntries(
@@ -41,7 +46,10 @@ const envelope = (type, data) => ({
 async function push(subscription, body) {
   const response = await fetch(`${base}/internal/v1/events/${subscription}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(args.token ? { authorization: `Bearer ${args.token}` } : {}),
+    },
     body: JSON.stringify(body),
   });
   if (response.status !== 204) throw new Error(`${subscription} answered ${response.status}: ${await response.text()}`);

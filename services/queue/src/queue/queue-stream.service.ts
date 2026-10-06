@@ -43,10 +43,17 @@ export class QueueStreamService {
   }
 
   async stream(eventId: string, userId: string, reply: FastifyReply): Promise<void> {
+    // Listened to before the first read: `close` fires once, so a buyer who leaves while Redis answers
+    // would go unnoticed and the stream would poll Redis every second for a dead connection.
+    let gone = false;
+    reply.raw.once("close", () => {
+      gone = true;
+    });
     // Before hijacking, a failure (404 not in the queue, 500 no Redis) is still a normal problem+json.
     const first = await this.queue.status(eventId, userId);
 
     reply.hijack();
+    if (gone) return; // nobody to stream to
     const raw = reply.raw;
     raw.writeHead(200, {
       "Content-Type": "text/event-stream",

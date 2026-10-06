@@ -103,6 +103,29 @@ redisTest("the stream announces each change of position, then admitted, over one
   assert.equal(ended, true);
 });
 
+redisTest("a buyer who leaves during the first read leaves no stream reading Redis behind", async () => {
+  // The close listener used to be added only after the first status read. A buyer gone while Redis
+  // answered had already fired `close`: the stream then polled Redis every second for a dead
+  // connection, until that buyer was admitted.
+  const eventId = await seedEvent(state.app);
+  const [a] = users(1);
+  await queueOf(state.app).join(eventId, a, Date.now());
+  const streams = state.app.get(require("../dist/queue/queue-stream.service").QueueStreamService);
+
+  await state.redis.call("CLIENT", "PAUSE", "600", "ALL"); // the first read now waits ~600 ms
+  const client = new AbortController();
+  const opening = fetch(`${state.base}/api/v1/queue/${eventId}/stream`, {
+    headers: { "x-user-id": a },
+    signal: client.signal,
+  }).catch(() => undefined);
+  await sleep(150);
+  client.abort(); // the buyer closes the tab while the queue is still reading
+  await opening;
+  await sleep(1500); // Redis answered long ago; a leaked stream would be polling by now
+
+  assert.equal(streams.open.size, 0, "a stream is still open for a buyer who already left");
+});
+
 redisTest("a stream that opens after the shutdown drain already ran is ended too, after its snapshot", async () => {
   // stream() reads the first status before registering itself. A SIGTERM landing in that read ran the
   // drain without it, and the stream then stayed open, holding the HTTP server past Cloud Run's ~10 s.
