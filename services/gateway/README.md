@@ -1,13 +1,13 @@
 # Gateway — API Gateway
 
 > Owner: Juan José · Contract: [contracts/openapi/gateway.yaml](../../contracts/openapi/gateway.yaml)
-> Status: authentication foundation and the queue routes (proxy, SSE, per-IP quota) implemented
+> Status: authentication foundation, Catalog routing, and queue routing implemented
 
 This slice provides the simulated login, HS256 session validation, correlation IDs,
 problem+json errors, structured request logs, health routes, CORS, a Cloud Run container, and the
-proxy for the three queue routes with its per-IP quota.
+proxy for the Catalog and queue routes, with a per-IP quota on the queue routes.
 The session JWT represents the browser user session. It is separate from the Google OIDC ID tokens
-that identify the Gateway's own calls to private services (today, the queue).
+that identify the Gateway's own calls to private services (Catalog and Queue).
 
 ## Implemented routes
 
@@ -16,10 +16,25 @@ that identify the Gateway's own calls to private services (today, the queue).
 | `POST /api/v1/auth/login` | Validates `{ email, displayName }`; returns an eight-hour HS256 JWT. No password or identity provider is used. |
 | `GET /health/live` | Reports that the process is answering; intended for Cloud Run liveness. |
 | `GET /health/ready` | Runs registered dependency checks and returns 503 if any check fails, and while shutting down. |
+| `GET /api/v1/events[/{eventId}]` | Public; forwarded to Catalog (`CATALOG_URL`). |
+| `POST /api/v1/events`, `PUT /api/v1/events/{eventId}/sales-rules`, `POST /api/v1/events/{eventId}/publish` | Session token required; forwarded to Catalog. |
 | `POST /api/v1/queue/{eventId}/join`, `GET .../status`, `GET .../stream` | Session token required. Forwarded to the queue service (`QUEUE_URL`); see below. |
 
 The UUID v5 namespace used for simulated user IDs is `d394b39c-c447-5a1f-b3ab-44c4b07be48c`.
 The email is trimmed and lower-cased before deriving the UUID and signing the token.
+
+## Catalog routes
+
+The Gateway builds only the five Catalog paths above. Public reads preserve the query string and
+send no browser-supplied identity headers. Writes forward `Idempotency-Key`, JSON bodies and
+`X-User-Id` / `X-User-Email` from the validated session, never from request headers. Every call
+forwards `X-Correlation-Id`. With `AUTH_MODE=cloud`, calls to the private Catalog carry the
+Gateway service account's Google ID token for audience `aforo-catalog`; locally no ID token is
+needed. Catalog's JSON and problem+json status/body, plus `Idempotent-Replayed`, pass through.
+An unexpected non-JSON response (for example, an IAM HTML 403) becomes 500 `INTERNAL`.
+
+`GET /api/v1/events/{eventId}/availability` belongs to Inventory and is deliberately not caught
+by the Catalog routes. It remains unavailable until the Inventory proxy is added.
 
 ## Queue routes
 
@@ -75,17 +90,15 @@ Content-Type: application/json
 
 ## Still to implement
 
-The Catalog, Orders and Inventory routes, the default quota (`RATE_LIMIT_DEFAULT_PER_MIN`) and payment
-webhook/mock routing are not part of this slice. Missing in Terraform for the queue routes:
+The Orders and Inventory routes, the default quota (`RATE_LIMIT_DEFAULT_PER_MIN`) and payment
+webhook/mock routing are not part of this slice.
 
-- `REDIS_URL` and VPC egress for the Gateway, without which the quota stays off (it fails open).
-- A request timeout for the Gateway: it has the module default of 60 s, so Cloud Run cuts every stream
-  after a minute (`queue.yaml` asks for no response timeout). The screen survives it by polling until it
-  reopens the stream, at the cost of one reconnection a minute per buyer.
+The Gateway's Redis quota wiring and the 3600 s SSE request timeout are supplied by infrastructure
+PRs #21 and #20 respectively. The quota fails open while Redis is off.
 `sessionStorage` persistence belongs to the frontend; the Gateway only issues and validates the
 session token.
 
-The planned public route map remains:
+The public route map is:
 
 | Public route | Target | Session token |
 | ------------ | ------ | :---: |
@@ -101,7 +114,5 @@ The planned public route map remains:
 | `POST /api/v1/payments/webhook` | Orders | No; Orders checks HMAC |
 | `GET /mock-gateway/**` | Mock-payment-gateway function | No |
 
-When routing is added, `/availability` must be matched before the general Catalog event route,
-`/internal/v1/**` must never be exposed, and the SSE route must stream without buffering or a
-response timeout. Quotas and service-to-service identity will be implemented with shared or
-distributed infrastructure, never as per-instance in-memory state.
+Future routing must keep `/availability` on Inventory and `/internal/v1/**` private. The SSE route
+streams without buffering or a response timeout; quotas use shared Redis, not per-instance state.
