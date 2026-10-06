@@ -111,6 +111,10 @@ gcloud scheduler jobs list --location southamerica-east1   # PAUSED when off, EN
   `gcloud auth application-default login`. The targets refuse to guess the switches.
 - **`Error acquiring the state lock`:** someone else's apply is running. Wait; never
   `force-unlock` unless you are sure that apply died.
+- **A plan shows `revision = "aforo-<svc>-000NN-xxx" -> null` on a service:** expected after a
+  CI deploy of that service (the deploy names its revision). Applying clears it and Cloud Run
+  names the next revision. Never add `template[0].revision` to `ignore_changes`: Terraform would
+  resend the old name with a new config and fail with `409 Revision named … already exists`.
 - **A plan right after an apply still shows changes:** a provider/API default mismatch (e.g. an
   all-default block the API drops). Fix the Terraform, don't re-apply in a loop.
 - **CI checks stuck or "job was not acquired by Runner":** a GitHub Actions incident
