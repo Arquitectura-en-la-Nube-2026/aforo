@@ -37,7 +37,7 @@ infra/
 | Cloud Run | 6 services: web, gateway, catalog, queue, orders, inventory | Nothing (scale to zero) |
 | Cloud SQL PostgreSQL | 1 `db-f1-micro` instance, 3 databases (`catalog`, `orders`, `inventory`) | Disk only, when `env_on = false` |
 | Memorystore for Redis | Basic 1 GB, **only while `redis_enabled = true`** (ADR-0001) | Nothing: it doesn't exist. ≈ US$1–2/day while on |
-| VPC | `aforo-vpc` + one subnet in the region, Direct VPC egress for `queue` only | Nothing |
+| VPC | `aforo-vpc` + one subnet in the region, Direct VPC egress for `queue` and `gateway` | Nothing |
 | Pub/Sub | 4 topics, 6 push subscriptions, 6 DLQs (the 2 `queue-*` subscriptions + DLQs only with Redis on) | Negligible |
 | Cloud Tasks | 3 queues: `reservation-expiry`, `payment-webhooks`, `prewarm-windows` | Negligible |
 | Cloud Scheduler | 3 jobs → `POST /internal/v1/housekeeping` on catalog, inventory, orders every minute; paused when `env_on = false` (ADR-0002) | Free tier (3 jobs) |

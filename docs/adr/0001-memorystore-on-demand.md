@@ -1,6 +1,6 @@
 # 0001 · Queue store: Memorystore, created only for live tests and demos
 
-- **Status:** Accepted · supersedes D-15
+- **Status:** Accepted · supersedes D-15 · amended 2026-10-05 (gateway quota)
 - **Date:** 2026-09-26
 - **Deciders:** Julián (Platform)
 - **Affects:** `infra/`, `services/queue`, `services/catalog` (seed), `Makefile`, runbooks
@@ -25,10 +25,15 @@ bills by provisioned capacity.
   recorded demo and the presentation. `make redis-up` creates it, `make redis-down` or
   `make down` destroys it.
 - Networking: one VPC `aforo-vpc` with one subnet in the region (permanent, free). Memorystore
-  uses `DIRECT_PEERING` on that VPC (private IP only). Only `queue` gets Direct VPC egress
-  (`egress = PRIVATE_RANGES_ONLY`). No AUTH, no TLS: the instance is reachable only from the VPC.
-- Terraform passes the instance address to `queue` as `REDIS_URL`
+  uses `DIRECT_PEERING` on that VPC (private IP only). `queue` and `gateway` get Direct VPC
+  egress (`egress = PRIVATE_RANGES_ONLY`). No AUTH, no TLS: the instance is reachable only from
+  the VPC.
+- Terraform passes the instance address to `queue` and `gateway` as `REDIS_URL`
   (`redis://<host>:<port>`, empty when the switch is off).
+- *Amendment (2026-10-05):* the Gateway keeps its distributed per-IP quota counters in the same
+  instance (`services/gateway`, never per-instance memory). While Memorystore is off the quota is
+  not enforced; that is accepted, since it only matters during live tests and demos, which is
+  exactly when Redis is on.
 - The queue's two push subscriptions (`queue-event-published`, `queue-sales-rules`) and their
   DLQs exist only while `redis_enabled = true`, so messages published while Redis is absent are
   neither retried against a broken consumer nor sent to the DLQ.

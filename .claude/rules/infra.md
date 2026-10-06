@@ -39,9 +39,9 @@ paths:
 - Sizing follows the connection budget in ADR-0005: `max_instance_count` per service and
   `DB_POOL_MAX` env var together; `orders` max 1 instance; everything `min_instance_count = 0`
   (the pre-warmer raises `gateway` and `queue` during sales windows, D-21).
-- Memorystore (queue) exists only when `redis_enabled = true`, together with the queue's push
-  subscriptions and their DLQs; `queue` reaches it through Direct VPC egress on `aforo-vpc`
-  (`PRIVATE_RANGES_ONLY`) (ADR-0001).
+- Memorystore (queue, gateway quota) exists only when `redis_enabled = true`, together with the
+  queue's push subscriptions and their DLQs; `queue` and `gateway` reach it through Direct VPC
+  egress on `aforo-vpc` (`PRIVATE_RANGES_ONLY`) (ADR-0001).
 - Cloud Scheduler: one job per Postgres service calling `POST /internal/v1/housekeeping` every
   minute with OIDC; `paused = !var.env_on` (ADR-0002).
 - Pub/Sub push subscriptions: OIDC push auth, `retry_policy` 10 s → 60 s,
