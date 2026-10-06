@@ -44,7 +44,7 @@ export class QueueProxyService {
   constructor(
     @Inject("GATEWAY_CONFIG") private readonly config: GatewayConfig,
     private readonly identity: ServiceIdentityService,
-    shutdown: ShutdownService,
+    private readonly shutdown: ShutdownService,
   ) {
     // An open stream is an in-flight request: end them before the HTTP server stops. The client's
     // stream ends and it falls back to polling `status` (D-13).
@@ -87,6 +87,17 @@ export class QueueProxyService {
       clientGone = true;
       controller.abort(); // nobody will read the answer: stop asking the queue service for it
     });
+    if (operation === "stream") {
+      // Known to the drain from the start, not only once the queue's headers arrive: a SIGTERM while
+      // this stream waits for them would otherwise run the drain without it, and the stream would then
+      // hold the HTTP server open until Cloud Run kills the instance. Aborted, it answers 500 and the
+      // client falls back to polling.
+      const stream = { controller, done };
+      this.streams.add(stream);
+      void done.then(() => this.streams.delete(stream));
+      // Asked for after the drain already ran: nothing would end it, so do not open it.
+      if (this.shutdown.isShuttingDown) controller.abort();
+    }
 
     try {
       const authorization = await this.identity.authorizationFor(QUEUE_AUDIENCE);
@@ -116,7 +127,7 @@ export class QueueProxyService {
     const contentType = upstream.headers.get("content-type") ?? "";
     if (operation === "stream" && upstream.ok && upstream.body && contentType.startsWith("text/event-stream")) {
       clearTimeout(timer); // from here on there is no response timeout: the stream lasts as long as the wait
-      this.pipeStream(upstream.body, controller, done, reply);
+      this.pipeStream(upstream.body, reply);
       return;
     }
     if (!JSON_CONTENT.test(contentType)) {
@@ -139,18 +150,14 @@ export class QueueProxyService {
     }
   }
 
-  private pipeStream(body: unknown, controller: AbortController, done: Promise<void>, reply: FastifyReply): void {
+  private pipeStream(body: unknown, reply: FastifyReply): void {
     // Through a PassThrough, so that ending the upstream (or aborting it on shutdown) ends the
-    // client's stream cleanly instead of tearing the socket down mid-message.
+    // client's stream cleanly instead of tearing the socket down mid-message. The stream is already
+    // known to the drain, and the upstream is aborted when the response is over (see forward).
     const out = new PassThrough();
     const upstream = Readable.fromWeb(body as WebReadableStream);
     upstream.on("error", () => out.end());
     upstream.pipe(out);
-
-    // `done` already aborts the upstream when the response is over (see forward).
-    const stream = { controller, done };
-    this.streams.add(stream);
-    void done.then(() => this.streams.delete(stream));
 
     reply
       .status(200)
