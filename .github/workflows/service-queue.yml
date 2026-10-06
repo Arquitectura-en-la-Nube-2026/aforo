@@ -13,6 +13,7 @@ jobs:
     uses: ./.github/workflows/_service.yml
     with:
       service: queue
+      smoke_path: /health/live # /health/ready is 503 while Memorystore is off (ADR-0001)
     permissions:
       contents: read
       id-token: write

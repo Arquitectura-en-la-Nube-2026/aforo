@@ -42,6 +42,9 @@ module "gateway" {
   max_instances = 3
   public        = true
 
+  # Proxies the queue's SSE stream: same limit as queue, or Cloud Run cuts it every minute.
+  request_timeout_seconds = 3600
+
   secret_env = {
     AUTH_SECRET = google_secret_manager_secret.auth.secret_id
   }

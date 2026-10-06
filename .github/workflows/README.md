@@ -39,5 +39,7 @@ Deploys are **off on merge** until the team is ready, so merges to `main` cost n
 - Deploy one unit now: Actions → `service-<name>` (or `web`) → **Run workflow** on `main`.
 - Deploy on every merge: `gh variable set DEPLOY_ON_MERGE --body true` (unset it to stop).
 
-The smoke test calls `/health/ready` on the new revision, so run `make up` first for units with a
-database; if it fails, traffic stays on the previous revision.
+The smoke test calls `/health/ready` on the new revision (`queue`: `/health/live`, since it is
+503 while Memorystore is off), so run `make up` first for units with a database; if it fails,
+traffic stays on the previous revision. Re-running a failed deploy of the same commit reuses its
+image (tags are immutable), so fix the environment and run it again.
