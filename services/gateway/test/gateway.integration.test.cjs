@@ -8,6 +8,7 @@ const { FastifyAdapter } = require("@nestjs/platform-fastify");
 process.env.AUTH_SECRET = randomBytes(32).toString("base64url");
 process.env.AUTH_ISSUER = "https://gateway.aforo.dev";
 process.env.FRONTEND_ORIGIN = "http://localhost:4200";
+process.env.QUEUE_URL = "http://127.0.0.1:1"; // required by the config; this test never reaches the queue
 
 test("Gateway follows the login, error, and health contracts", async () => {
   const { AppModule } = require("../dist/app.module");
