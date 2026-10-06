@@ -61,18 +61,24 @@ return users
 `;
 
 /**
- * KEYS[1] event:{eventId}
- * ARGV[1] the field that keeps when this kind of message last happened ("publishedAt" or "rulesAt"),
- * ARGV[2] the message's occurredAt in epoch ms, ARGV[3..] field/value pairs to write.
- * Pub/Sub does not keep the order: rules changed from 0 to 60 s can arrive as 60 then 0. A message older
- * than the last applied one of its kind is skipped (returns 0), so the newest always wins. Each kind has
- * its own clock: old rules must not hold back a newer EventPublished.
+ * KEYS[1] event:{eventId}, KEYS[2] inbox:{messageId}
+ * ARGV[1] the clock field ("publishedAt" or "rulesAt"), ARGV[2] occurredAt in epoch ms,
+ * ARGV[3] inbox TTL in seconds, ARGV[4..] projection field/value pairs.
+ * A duplicate returns 2 without touching the projection. An older fact returns 0 and is still
+ * marked consumed. A new fact returns 1. The projection is written before the inbox marker so a
+ * Redis command error cannot acknowledge an effect that did not happen. Redis executes this script
+ * without interleaving another delivery between the check, effect and marker.
  */
 export const PROJECT_LUA = `
+if redis.call('EXISTS', KEYS[2]) == 1 then return 2 end
 local last = tonumber(redis.call('HGET', KEYS[1], ARGV[1]))
-if last and tonumber(ARGV[2]) < last then return 0 end
-redis.call('HSET', KEYS[1], ARGV[1], ARGV[2], unpack(ARGV, 3))
-return 1
+local applied = 0
+if not last or tonumber(ARGV[2]) >= last then
+  redis.call('HSET', KEYS[1], ARGV[1], ARGV[2], unpack(ARGV, 4))
+  applied = 1
+end
+redis.call('SET', KEYS[2], '1', 'EX', ARGV[3])
+return applied
 `;
 
 export type JoinReply =["ADMITTED", string] | ["NOT_OPEN"] | ["WAITING", number];
@@ -83,5 +89,5 @@ export interface QueueScripts {
   queueJoin(queueKey: string, admittedKey: string, userId: string, score: number, open: string): Promise<JoinReply>;
   queueStatus(queueKey: string, admittedKey: string, userId: string): Promise<StatusReply>;
   queueAdmit(queueKey: string, ...args: Array<string | number>): Promise<string[]>;
-  projectionUpsert(eventKey: string, clockField: string, occurredAtMs: number, ...fields: string[]): Promise<number>;
+  projectionUpsert(eventKey: string, inboxKey: string, clockField: string, occurredAtMs: number, inboxTtlSeconds: number, ...fields: string[]): Promise<number>;
 }

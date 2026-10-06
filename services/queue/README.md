@@ -95,9 +95,10 @@ Consumes `EventPublished` (`queue-event-published`) and `SalesRulesConfigured`
   the buyer is connected to, so every open stream reads its state once a second and sends
   `position` only when it changed. The first message is a snapshot, so an admission between `join`
   and opening the stream is not missed. The server closes the stream after `admitted`.
-- **Push consumers** (`events.controller.ts`) apply the effect first and mark the inbox after, never
-  the other way round (`@aforo/common` `consumeOnce`). The effect itself skips a message older than the
-  last one of its kind, so a retried old message cannot undo a newer one.
+- **Push consumers** (`events.controller.ts`) use one Redis Lua script to check the inbox key,
+  update the event projection and mark the message. Concurrent deliveries cannot both apply the
+  effect. An older fact is skipped and marked consumed, so a retried old message cannot undo a newer
+  one. A projection error leaves no inbox marker, allowing Pub/Sub to retry.
 
 ## Run it locally
 

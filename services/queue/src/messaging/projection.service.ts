@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import type { EventPublishedData, SalesRulesConfiguredData } from "@aforo/common";
-import { eventKey } from "../queue/queue-scripts";
+import { eventKey, inboxKey } from "../queue/queue-scripts";
 import { RedisService } from "../redis/redis.service";
 
 export interface EventProjection {
@@ -10,6 +10,8 @@ export interface EventProjection {
 }
 
 const EVENT_KEY_PATTERN = "event:*";
+// Pub/Sub retries for minutes, not days. Keep the marker longer than its delivery window.
+const INBOX_TTL_SECONDS = 24 * 60 * 60;
 
 /**
  * The local copy of what the queue needs about an event: `event:{eventId}` (README). Built from
@@ -21,11 +23,13 @@ const EVENT_KEY_PATTERN = "event:*";
 export class ProjectionService {
   constructor(private readonly store: RedisService) {}
 
-  async applyEventPublished(data: EventPublishedData, occurredAt: string): Promise<void> {
+  async applyEventPublished(messageId: string, data: EventPublishedData, occurredAt: string): Promise<void> {
     await this.store.redis.projectionUpsert(
       eventKey(data.eventId),
+      inboxKey(messageId),
       "publishedAt",
       Date.parse(occurredAt),
+      INBOX_TTL_SECONDS,
       "salesOpensAt",
       data.salesOpensAt,
       "salesClosesAt",
@@ -33,11 +37,13 @@ export class ProjectionService {
     );
   }
 
-  async applySalesRules(data: SalesRulesConfiguredData, occurredAt: string): Promise<void> {
+  async applySalesRules(messageId: string, data: SalesRulesConfiguredData, occurredAt: string): Promise<void> {
     await this.store.redis.projectionUpsert(
       eventKey(data.eventId),
+      inboxKey(messageId),
       "rulesAt",
       Date.parse(occurredAt),
+      INBOX_TTL_SECONDS,
       "openingWindowSeconds",
       String(data.openingWindowSeconds),
     );

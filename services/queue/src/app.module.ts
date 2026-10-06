@@ -10,7 +10,6 @@ import {
 import { loadQueueConfig } from "./config/queue-config";
 import { EventsController } from "./messaging/events.controller";
 import { ProjectionService } from "./messaging/projection.service";
-import { RedisInboxStore } from "./messaging/redis-inbox.store";
 import { AdmissionService } from "./queue/admission.service";
 import { QueueController } from "./queue/queue.controller";
 import { QueueService } from "./queue/queue.service";
@@ -27,7 +26,6 @@ const config = loadQueueConfig();
     { provide: APP_FILTER, useClass: ProblemJsonFilter },
     RedisService,
     ProjectionService,
-    RedisInboxStore,
     QueueService,
     QueueStreamService,
     AdmissionService,

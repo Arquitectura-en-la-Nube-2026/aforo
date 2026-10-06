@@ -253,6 +253,44 @@ redisTest("a redelivered message is not applied twice, and a new message id is",
   assert.equal(await state.redis.hget(`event:${eventId}`, "openingWindowSeconds"), "45");
 });
 
+redisTest("concurrent projection deliveries update the projection and inbox only once", async () => {
+  const { RedisService } = require("../dist/redis/redis.service");
+  const client = state.app.get(RedisService).redis;
+  const eventId = randomUUID();
+  const messageId = randomUUID();
+  const projectionKey = `event:${eventId}`;
+  const inboxKey = `inbox:${messageId}`;
+  const results = await Promise.all(
+    Array.from({ length: 10 }, () =>
+      client.projectionUpsert(projectionKey, inboxKey, "rulesAt", Date.now(), 86400, "openingWindowSeconds", "45"),
+    ),
+  );
+
+  assert.equal(results.filter((result) => result === 1).length, 1, "one delivery applies the effect");
+  assert.equal(results.filter((result) => result === 2).length, 9, "the others see the inbox marker");
+  assert.equal(await state.redis.hget(projectionKey, "openingWindowSeconds"), "45");
+  assert.equal(await state.redis.exists(inboxKey), 1);
+});
+
+redisTest("a projection failure leaves no inbox marker and a redelivery succeeds", async () => {
+  const eventId = randomUUID();
+  const body = salesRules(eventId, 30);
+  const inboxKey = `inbox:${JSON.parse(Buffer.from(body.message.data, "base64").toString("utf8")).messageId}`;
+  const projectionKey = `event:${eventId}`;
+  const server = state.app.getHttpAdapter().getInstance();
+
+  await state.redis.set(projectionKey, "wrong type");
+  const failed = await server.inject({ method: "POST", url: "/internal/v1/events/queue-sales-rules", payload: body });
+  assert.equal(failed.statusCode, 500);
+  assert.equal(await state.redis.exists(inboxKey), 0);
+
+  await state.redis.del(projectionKey);
+  const retried = await server.inject({ method: "POST", url: "/internal/v1/events/queue-sales-rules", payload: body });
+  assert.equal(retried.statusCode, 204);
+  assert.equal(await state.redis.hget(projectionKey, "openingWindowSeconds"), "30");
+  assert.equal(await state.redis.exists(inboxKey), 1);
+});
+
 redisTest("an older message that arrives late does not overwrite a newer one", async () => {
   // Catalog re-emits SalesRulesConfigured when the rules change, and Pub/Sub does not keep the order. The
   // window went from 0 to 60 s; the old message (0) arriving last used to win, and the lottery was gone.

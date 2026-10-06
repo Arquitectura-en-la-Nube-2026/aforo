@@ -64,7 +64,7 @@ export class RedisService implements OnModuleInit {
     client.defineCommand("queueJoin", { numberOfKeys: 2, lua: JOIN_LUA });
     client.defineCommand("queueStatus", { numberOfKeys: 2, lua: STATUS_LUA });
     client.defineCommand("queueAdmit", { numberOfKeys: 1, lua: ADMIT_LUA });
-    client.defineCommand("projectionUpsert", { numberOfKeys: 1, lua: PROJECT_LUA });
+    client.defineCommand("projectionUpsert", { numberOfKeys: 2, lua: PROJECT_LUA });
     // Without a listener an "error" event crashes the process. Log each distinct failure once, not
     // on every reconnect attempt.
     client.on("error", (error: Error) => {
