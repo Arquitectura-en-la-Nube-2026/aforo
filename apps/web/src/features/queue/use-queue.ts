@@ -32,6 +32,8 @@ const MAX_WAIT_MS = 60_000;
 class BrokenAnswer extends Error {}
 /** The queue answered 404 to something that was working: our place is gone. */
 class PlaceLost extends Error {}
+/** Another tab signed in as someone else: this tab's requests now carry that buyer's token. */
+class BuyerChanged extends Error {}
 
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve) => {
@@ -97,6 +99,13 @@ export function useQueue(eventId: string): QueueState {
     const owner = readSession()?.user.id;
     let admittedOnce = false;
 
+    // Every request carries the token of whoever is signed in now (the session is shared by the tabs).
+    // Asked as someone else, the answer would be that buyer's status shown and saved as the owner's:
+    // check before each request, and start over as the new buyer instead.
+    const assertSameBuyer = () => {
+      if (readSession()?.user.id !== owner) throw new BuyerChanged();
+    };
+
     const reachable = () => {
       failures = 0;
       setOffline(false);
@@ -131,6 +140,7 @@ export function useQueue(eventId: string): QueueState {
       signal.addEventListener('abort', stop, { once: true });
       let admitted = false;
       try {
+        assertSameBuyer();
         const response = await openQueueStream(eventId, streamAttempt.signal);
         setTransport('stream');
         reachable();
@@ -156,6 +166,7 @@ export function useQueue(eventId: string): QueueState {
       setTransport('polling');
       const until = Date.now() + STREAM_RETRY_MS;
       while (!signal.aborted && Date.now() < until) {
+        assertSameBuyer();
         let waitMs = POLL_MS;
         try {
           const next = await getQueueStatus(eventId, { signal });
@@ -194,7 +205,7 @@ export function useQueue(eventId: string): QueueState {
             if (await viaStream()) return;
           } catch (failure) {
             if (signal.aborted) return;
-            if (failure instanceof BrokenAnswer) throw failure;
+            if (failure instanceof BrokenAnswer || failure instanceof BuyerChanged) throw failure;
             if (isNotFound(failure)) throw new PlaceLost();
             // A 429 here shares the quota with `status`: polling at once would only get another 429.
             const rateLimited = rateLimitWaitMs(failure);
@@ -205,7 +216,9 @@ export function useQueue(eventId: string): QueueState {
         }
       } catch (failure) {
         if (signal.aborted) return;
-        if (failure instanceof PlaceLost) setPhase('lost');
+        if (failure instanceof BuyerChanged)
+          setAttempt((n) => n + 1); // join again, as the buyer signed in now
+        else if (failure instanceof PlaceLost) setPhase('lost');
         else if (failure instanceof BrokenAnswer) {
           setError(new ApiError(0, 'INTERNAL', null));
           setPhase('error');
@@ -221,6 +234,10 @@ export function useQueue(eventId: string): QueueState {
     // A hidden tab throttles its timers and may have its stream suspended: ask once when it comes back.
     const onVisible = () => {
       if (signal.aborted || document.visibilityState !== 'visible') return;
+      if (readSession()?.user.id !== owner) {
+        setAttempt((n) => n + 1); // signed in as someone else while hidden: join again as them
+        return;
+      }
       getQueueStatus(eventId, { signal })
         .then((next) => {
           if (!signal.aborted && apply(next)) controller.abort(); // admitted: stop the stream and the polling

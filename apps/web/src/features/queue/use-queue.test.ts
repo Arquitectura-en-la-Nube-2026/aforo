@@ -208,6 +208,38 @@ describe('useQueue: following the position', () => {
     expect(getPass(EVENT)?.passToken).toBe('p_ana');
   });
 
+  it("joins again as the new buyer when another tab signs in as someone else, instead of saving Ben's status as Ana's", async () => {
+    // Every request carries the token of whoever is signed in now. Ana's screen polled with Ben's token,
+    // got Ben's admission and saved it as Ana's pass.
+    vi.mocked(joinQueue).mockResolvedValueOnce(waiting(7)).mockResolvedValue(waiting(3));
+    vi.mocked(openQueueStream).mockRejectedValue(apiError('INTERNAL', 503));
+    vi.mocked(getQueueStatus)
+      .mockResolvedValueOnce(waiting(6))
+      .mockResolvedValue(admitted('p_ben'));
+    const { result } = mount();
+    await advance();
+    expect(result.current.status?.position).toBe(6);
+
+    saveSession({
+      accessToken: 't2',
+      tokenType: 'Bearer',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      user: { id: 'ben', email: 'ben@example.com', displayName: 'Ben' },
+    });
+    await advance(POLL_MS);
+    await advance();
+    expect(joinQueue).toHaveBeenCalledTimes(2); // the screen started over, now as Ben
+    expect(getPass(EVENT)?.passToken).toBe('p_ben'); // Ben's pass, under Ben
+
+    saveSession({
+      accessToken: 't',
+      tokenType: 'Bearer',
+      expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      user: { id: 'ana', email: 'ana@example.com', displayName: 'Ana' },
+    });
+    expect(getPass(EVENT)).toBeNull(); // and nothing of Ben's under Ana
+  });
+
   it('is not fooled by an admitted event whose line break arrives split between two chunks', async () => {
     vi.mocked(joinQueue).mockResolvedValue(waiting(1));
     const streams = streamsOpened();

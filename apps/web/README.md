@@ -59,7 +59,9 @@ checks that the Gateway answers, and is what the deployment smoke test calls.
   the other and nothing breaks, but both keep a connection open. `sessionStorage` is per tab, so a pass
   earned in one tab is not found by a buy screen opened in another tab of the same buyer.
 - **The pass belongs to a buyer.** `passToken` is stored per buyer and event, so signing out and in as
-  someone else on the same tab does not hand over the previous buyer's pass.
+  someone else on the same tab does not hand over the previous buyer's pass. The session is shared by
+  the tabs, so if another tab signs in as someone else while this one waits, the queue screen joins again
+  as the new buyer instead of asking for one buyer's status with the other's token.
 - **Two different countdowns.** The queue pass (10 min, `passExpiresAt`) and the reservation
   (`reservationTtlSeconds`, `expiresAt` of the order) are labelled differently on screen ("Tu turno
   vence en…" / "Tus entradas están reservadas por…") so the buyer knows which one is running.
