@@ -93,6 +93,27 @@ test("status passes the queue's problem+json through with its status, type and c
   assert.equal(response.json().correlationId, response.headers["x-correlation-id"]);
 });
 
+test("an answer that is not JSON (Google's 403 page in front of the queue) is a 500 INTERNAL problem+json, not HTML", async () => {
+  // In the cloud an IAM rejection comes from Google's front end as an HTML page. Passed through, the
+  // browser got HTML where every error must be problem+json with a code.
+  const buyer = await login(app);
+  upstream.respond = (request, response) => {
+    response.writeHead(403, { "content-type": "text/html; charset=UTF-8" });
+    response.end("<html><title>403 Forbidden</title><body>Your client does not have permission</body></html>");
+  };
+  for (const operation of ["status", "stream"]) {
+    const response = await inject({
+      method: "GET",
+      url: `/api/v1/queue/${eventId}/${operation}`,
+      headers: { authorization: `Bearer ${buyer.token}` },
+    });
+    assert.equal(response.statusCode, 500, operation);
+    assert.match(response.headers["content-type"], /^application\/problem\+json/);
+    assert.equal(response.json().code, "INTERNAL");
+    assert.doesNotMatch(response.body, /<html/);
+  }
+});
+
 test("only the three queue operations with a UUID event id reach the queue service", async () => {
   const buyer = await login(app);
   const headers = { authorization: `Bearer ${buyer.token}` };

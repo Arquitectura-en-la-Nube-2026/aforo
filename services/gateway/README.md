@@ -6,8 +6,8 @@
 This slice provides the simulated login, HS256 session validation, correlation IDs,
 problem+json errors, structured request logs, health routes, CORS, a Cloud Run container, and the
 proxy for the three queue routes with its per-IP quota.
-The session JWT represents the browser user session. It is separate from Google OIDC ID tokens,
-which will identify Gateway-to-service calls when private service routing is implemented.
+The session JWT represents the browser user session. It is separate from the Google OIDC ID tokens
+that identify the Gateway's own calls to private services (today, the queue).
 
 ## Implemented routes
 
@@ -30,6 +30,11 @@ a request at another route of the queue service (`/internal/v1/**` in particular
 - **Identity.** `X-User-Id` and `X-User-Email` come from the validated token. The ones a browser sends are
   never copied, and the user's `Authorization` header is not forwarded. `X-Queue-Pass` and
   `X-Correlation-Id` are forwarded (the pass is logged, never verified, D-07).
+- **Service identity.** In `dev` on GCP the queue is private: Cloud Run only lets in the Gateway's service
+  account (`infra/envs/dev/services.tf`). With `AUTH_MODE=cloud` (set by Terraform) every call carries the
+  Gateway's Google ID token in `Authorization`, for the queue's custom audience `aforo-queue`, taken from the
+  instance metadata server and reused for 50 minutes (tokens last one hour; concurrent first calls share
+  one fetch). Without it every join is a 403 from Cloud Run. With `AUTH_MODE=dev` (local) no token is sent.
 - **SSE.** The stream is piped without buffering and without a response timeout; the 2.5 s timeout only
   covers waiting for the response headers. When the client leaves, the connection to the queue service is
   closed. On SIGTERM open streams are ended and the shutdown waits for them to finish.
@@ -42,7 +47,10 @@ a request at another route of the queue service (`/internal/v1/**` in particular
   `X-Forwarded-For` (`src/trust-proxy.ts`). It is a function and not `trustProxy: 1` because Fastify 5.12
   treats a number as "trust nothing" while the 5.11 bundled by `@nestjs/platform-fastify` counts hops.
 - **Upstream errors.** A queue service that is down or does not answer within 2.5 s is a 500 `INTERNAL`
-  problem+json. The queue's own answers (200, 201, 404, 409, 500) pass through unchanged.
+  problem+json. The queue's own answers (200, 201, 404, 409, 500) pass through unchanged. An answer that is
+  not JSON did not come from the queue (Google's HTML page for a 403 from IAM, for example): it becomes a
+  500 `INTERNAL` problem+json, and the log line `queue.unexpected_answer` keeps its real status. A failed
+  ID token is the same 500, logged as `queue.identity_token_failed`, and the queue is not called.
 
 ## Local run
 
@@ -67,12 +75,13 @@ Content-Type: application/json
 
 ## Still to implement
 
-The Catalog, Orders and Inventory routes, **Google OIDC service identity**, the default quota
-(`RATE_LIMIT_DEFAULT_PER_MIN`) and payment webhook/mock routing are not part of this slice.
-Without the OIDC ID token the queue routes only work against a queue service that does not require
-it, as when running both locally: in `dev` on GCP the queue is private and only this service's account
-may call it (`infra/envs/dev/services.tf`), so Cloud Run IAM would reject the Gateway's calls. Also
-missing in Terraform: `REDIS_URL` and VPC egress for the Gateway, without which the quota stays off.
+The Catalog, Orders and Inventory routes, the default quota (`RATE_LIMIT_DEFAULT_PER_MIN`) and payment
+webhook/mock routing are not part of this slice. Missing in Terraform for the queue routes:
+
+- `REDIS_URL` and VPC egress for the Gateway, without which the quota stays off (it fails open).
+- A request timeout for the Gateway: it has the module default of 60 s, so Cloud Run cuts every stream
+  after a minute (`queue.yaml` asks for no response timeout). The screen survives it by polling until it
+  reopens the stream, at the cost of one reconnection a minute per buyer.
 `sessionStorage` persistence belongs to the frontend; the Gateway only issues and validates the
 session token.
 

@@ -7,6 +7,10 @@ export interface GatewayConfig {
   /** Null while Memorystore is off: the per-IP quota is then not enforced (it fails open). */
   redisUrl: string | null;
   rateLimitQueuePerMinute: number;
+  /** "cloud" (Terraform): calls to private services carry a Google ID token. "dev" (local): they do not. */
+  authMode: "dev" | "cloud";
+  /** Where the instance's metadata server answers. Only tests change it (GCE_METADATA_HOST). */
+  metadataHost: string;
 }
 
 export function loadGatewayConfig(env = process.env): GatewayConfig {
@@ -36,5 +40,9 @@ export function loadGatewayConfig(env = process.env): GatewayConfig {
     throw new Error("RATE_LIMIT_QUEUE_PER_MIN must be a positive integer");
   }
 
-  return { port, authSecret, authIssuer, frontendOrigin, queueUrl, redisUrl, rateLimitQueuePerMinute };
+  const authMode = env.AUTH_MODE?.trim() || "dev";
+  if (authMode !== "dev" && authMode !== "cloud") throw new Error("AUTH_MODE must be dev or cloud");
+  const metadataHost = env.GCE_METADATA_HOST?.trim() || "metadata.google.internal";
+
+  return { port, authSecret, authIssuer, frontendOrigin, queueUrl, redisUrl, rateLimitQueuePerMinute, authMode, metadataHost };
 }

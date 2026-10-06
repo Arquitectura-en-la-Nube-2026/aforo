@@ -1,10 +1,11 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { DomainError, getCorrelationId } from "@aforo/common";
+import { DomainError, StructuredLogger, getCorrelationId } from "@aforo/common";
 import { ShutdownService } from "@aforo/common/nest";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { PassThrough, Readable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
+import { ServiceIdentityService } from "../auth/service-identity.service";
 import type { GatewayConfig } from "../config/gateway-config";
 
 export type QueueOperation = "join" | "status" | "stream";
@@ -12,6 +13,13 @@ export type QueueOperation = "join" | "status" | "stream";
 // contracts/conventions.md: connect 0.5 s and response 2 s by default. fetch has one timer, so the
 // whole request gets the sum; for the stream it only covers the wait for the response headers.
 const UPSTREAM_TIMEOUT_MS = 2500;
+
+// The queue's custom ID-token audience (infra/modules/cloud-run-service: "aforo-<name>").
+const QUEUE_AUDIENCE = "aforo-queue";
+
+// What the queue itself answers. Anything else did not come from the queue: in the cloud, Google's front
+// end answers an IAM rejection with an HTML 403 page.
+const JSON_CONTENT = /^application\/(problem\+)?json\b/i;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -25,14 +33,17 @@ type AuthenticatedRequest = FastifyRequest & { user?: { sub: string; email: stri
  *  - the identity headers are set here from the validated token. Whatever X-User-Id the browser sent
  *    is never copied, otherwise anyone could join the queue as someone else;
  *  - the browser's Authorization header is not forwarded: logic services trust the Gateway's headers
- *    and never see the user token (contracts/conventions.md).
+ *    and never see the user token (contracts/conventions.md). In the cloud the Authorization the queue
+ *    gets is the Gateway's own Google ID token, which is what lets Cloud Run IAM pass the call.
  */
 @Injectable()
 export class QueueProxyService {
+  private readonly logger = new StructuredLogger(process.env.K_SERVICE ?? process.env.SERVICE_NAME ?? "gateway");
   private readonly streams = new Set<{ controller: AbortController; done: Promise<void> }>();
 
   constructor(
     @Inject("GATEWAY_CONFIG") private readonly config: GatewayConfig,
+    private readonly identity: ServiceIdentityService,
     shutdown: ShutdownService,
   ) {
     // An open stream is an in-flight request: end them before the HTTP server stops. The client's
@@ -68,15 +79,26 @@ export class QueueProxyService {
     if (typeof queuePass === "string") headers["X-Queue-Pass"] = queuePass; // forwarded and logged, never verified (D-07)
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
-    // Listened to before calling the queue service: `close` fires once, so a client that leaves while we
-    // wait for the upstream headers would otherwise go unnoticed and its upstream stream stay open.
+    // Listened to before anything is awaited: `close` fires once, so a client that leaves while we fetch
+    // the ID token or wait for the upstream headers would otherwise go unnoticed and its stream stay open.
     let clientGone = false;
     const done = new Promise<void>((resolve) => reply.raw.once("close", resolve));
     void done.then(() => {
       clientGone = true;
       controller.abort(); // nobody will read the answer: stop asking the queue service for it
     });
+
+    try {
+      const authorization = await this.identity.authorizationFor(QUEUE_AUDIENCE);
+      if (authorization) headers.Authorization = authorization;
+    } catch (error) {
+      if (clientGone) return;
+      // Without the token Cloud Run would answer 403 anyway: do not call, say what failed.
+      this.logger.write("ERROR", "queue.identity_token_failed", { error: error instanceof Error ? error.message : String(error) });
+      throw new DomainError("INTERNAL", "queue service unavailable");
+    }
+
+    const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
     let upstream: Response;
     try {
       upstream = await fetch(`${this.config.queueUrl}/api/v1/queue/${eventId}/${operation}`, {
@@ -91,11 +113,19 @@ export class QueueProxyService {
       throw new DomainError("INTERNAL", "queue service unavailable");
     }
 
-    const contentType = upstream.headers.get("content-type") ?? "application/json";
+    const contentType = upstream.headers.get("content-type") ?? "";
     if (operation === "stream" && upstream.ok && upstream.body && contentType.startsWith("text/event-stream")) {
       clearTimeout(timer); // from here on there is no response timeout: the stream lasts as long as the wait
       this.pipeStream(upstream.body, controller, done, reply);
       return;
+    }
+    if (!JSON_CONTENT.test(contentType)) {
+      // Not the queue's answer (Google's HTML 403 when IAM rejects the call, a proxy error page...): the
+      // browser must still get problem+json with a code. The log keeps what really came back.
+      clearTimeout(timer);
+      await upstream.body?.cancel().catch(() => undefined);
+      this.logger.write("ERROR", "queue.unexpected_answer", { status: upstream.status, contentType });
+      throw new DomainError("INTERNAL", "queue service unavailable");
     }
 
     try {

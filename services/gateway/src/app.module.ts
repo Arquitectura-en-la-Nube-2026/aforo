@@ -11,6 +11,7 @@ import {
 import { DomainError } from "@aforo/common";
 import { LoginController } from "./auth/login.controller";
 import { LoginService } from "./auth/login.service";
+import { ServiceIdentityService } from "./auth/service-identity.service";
 import { SessionAuthGuard } from "./auth/session-auth.guard";
 import { loadGatewayConfig } from "./config/gateway-config";
 import { QueueProxyController } from "./queue/queue-proxy.controller";
@@ -34,6 +35,7 @@ const config = loadGatewayConfig();
     { provide: "GATEWAY_CONFIG", useValue: config },
     LoginService,
     RateLimitService,
+    ServiceIdentityService,
     QueueProxyService,
     // Order matters: the quota runs before the session check, so requests with a bad token spend it too.
     { provide: APP_GUARD, useClass: RateLimitGuard },
