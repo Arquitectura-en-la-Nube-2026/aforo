@@ -48,6 +48,20 @@ checks that the Gateway answers, and is what the deployment smoke test calls.
 - **SSE is read with `fetch`, not `EventSource`.** The stream is authenticated with a bearer token
   and `EventSource` cannot send an `Authorization` header (`src/lib/sse.ts`). If the stream fails or
   ends without admission, the screen polls `status` every 3 s (D-13).
+- **The queue keeps trying.** If the stream cannot be opened or is cut, the screen polls `status` every
+  3 s and tries the stream again every 30 s, closing the previous connection each time. After 3 failed
+  polls in a row it says it is offline (the place is kept) and recovers by itself. A 429 is waited out for
+  its `Retry-After` (capped at 60 s) and is not an outage. A 404 while waiting means the queue forgot the
+  buyer (Redis was recreated): the screen says so and offers to join again. When the tab becomes visible
+  again it asks for the status once. The buyer cannot leave the queue: the contract has no operation for it.
+- **Two tabs on the same queue.** Each tab joins (the queue answers a repeat join with the same place),
+  follows its own stream and, when admitted, saves its own copy of the same pass. Neither tab knows about
+  the other and nothing breaks, but both keep a connection open. `sessionStorage` is per tab, so a pass
+  earned in one tab is not found by a buy screen opened in another tab of the same buyer.
+- **The pass belongs to a buyer.** `passToken` is stored per buyer and event, so signing out and in as
+  someone else on the same tab does not hand over the previous buyer's pass. The session is shared by
+  the tabs, so if another tab signs in as someone else while this one waits, the queue screen joins again
+  as the new buyer instead of asking for one buyer's status with the other's token.
 - **Two different countdowns.** The queue pass (10 min, `passExpiresAt`) and the reservation
   (`reservationTtlSeconds`, `expiresAt` of the order) are labelled differently on screen ("Tu turno
   vence en…" / "Tus entradas están reservadas por…") so the buyer knows which one is running.

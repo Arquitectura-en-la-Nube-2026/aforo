@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowRight, Radio, TicketCheck, TimerOff } from 'lucide-react';
+import { ArrowRight, Radio, TicketCheck, TimerOff, Unplug, WifiOff } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef } from 'react';
 import { getEvent } from '@/api/endpoints';
@@ -34,6 +34,7 @@ export function QueueScreen({ eventId }: { eventId: string }) {
   const position = queue.status?.position;
   let spoken = '';
   if (queue.phase === 'admitted') spoken = es.queue.announceAdmitted;
+  else if (queue.phase === 'waiting' && queue.offline) spoken = es.queue.announceOffline;
   else if (
     queue.phase === 'waiting' &&
     position !== undefined &&
@@ -44,7 +45,12 @@ export function QueueScreen({ eventId }: { eventId: string }) {
 
   // When the turn arrives or ends, move focus to the new heading so keyboard users land on it.
   useEffect(() => {
-    if (queue.phase === 'admitted' || queue.phase === 'expired' || queue.phase === 'not-open') {
+    if (
+      queue.phase === 'admitted' ||
+      queue.phase === 'expired' ||
+      queue.phase === 'lost' ||
+      queue.phase === 'not-open'
+    ) {
       headingRef.current?.focus();
     }
   }, [queue.phase]);
@@ -68,7 +74,7 @@ export function QueueScreen({ eventId }: { eventId: string }) {
 
       {queue.phase === 'joining' && (
         <div className="stub grid gap-4 p-8" aria-busy="true">
-          <p className="font-display text-xl font-semibold">{es.queue.joining}</p>
+          <h1 className="font-display text-xl font-semibold">{es.queue.joining}</h1>
           <Skeleton className="h-24 w-full" />
         </div>
       )}
@@ -80,6 +86,7 @@ export function QueueScreen({ eventId }: { eventId: string }) {
           estimatedWaitSeconds={queue.status.estimatedWaitSeconds}
           startPosition={queue.startPosition}
           transport={queue.transport}
+          offline={queue.offline}
         />
       )}
 
@@ -120,6 +127,19 @@ export function QueueScreen({ eventId }: { eventId: string }) {
         </div>
       )}
 
+      {queue.phase === 'lost' && (
+        <div className="stub grid gap-4 p-8 text-center">
+          <Unplug className="mx-auto size-10 text-danger" aria-hidden />
+          <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold outline-none">
+            {es.queue.lostTitle}
+          </h1>
+          <p className="mx-auto max-w-sm text-muted">{es.queue.lostBody}</p>
+          <Button size="lg" onClick={queue.restart} className="mx-auto">
+            {es.queue.rejoin}
+          </Button>
+        </div>
+      )}
+
       {queue.phase === 'not-open' && (
         <div className="stub grid gap-4 p-8 text-center">
           <h1 ref={headingRef} tabIndex={-1} className="text-3xl font-bold outline-none">
@@ -133,11 +153,14 @@ export function QueueScreen({ eventId }: { eventId: string }) {
       )}
 
       {queue.phase === 'error' && (
-        <ErrorPanel error={queue.error} onRetry={queue.restart}>
-          <Button asChild variant="ghost">
-            <Link href={`/events/${eventId}`}>{es.queue.backToEvent}</Link>
-          </Button>
-        </ErrorPanel>
+        <>
+          <h1 className="sr-only">{es.queue.problemTitle}</h1>
+          <ErrorPanel error={queue.error} onRetry={queue.restart}>
+            <Button asChild variant="ghost">
+              <Link href={`/events/${eventId}`}>{es.queue.backToEvent}</Link>
+            </Button>
+          </ErrorPanel>
+        </>
       )}
     </div>
   );
@@ -149,12 +172,14 @@ function Waiting({
   estimatedWaitSeconds,
   startPosition,
   transport,
+  offline,
 }: {
   position: number;
   aheadOf: number;
   estimatedWaitSeconds: number;
   startPosition: number | null;
   transport: Transport;
+  offline: boolean;
 }) {
   // How far along the line we are: 0 % when we joined, 100 % when it is our turn.
   const total = Math.max(startPosition ?? position, position, 1);
@@ -166,17 +191,17 @@ function Waiting({
         <h1 className="text-lg font-semibold text-muted">{es.queue.yourPosition}</h1>
         <p
           key={position}
-          aria-label={`${es.queue.yourPosition}: ${position}`}
           className="num animate-rise font-display text-[clamp(5.5rem,26vw,9rem)] font-extrabold leading-none tracking-tight text-primary"
         >
           {position}
         </p>
         <div
           role="progressbar"
-          aria-label={es.queue.yourPosition}
+          aria-label={es.queue.progress}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={progress}
+          aria-valuetext={es.queue.progressText(progress)}
           className="mx-auto h-2 w-full max-w-xs overflow-hidden rounded-full bg-paper"
         >
           <div
@@ -193,17 +218,24 @@ function Waiting({
       <div className="stub-perforation" aria-hidden />
       <div className="grid gap-2 p-6">
         <p className="text-center text-[0.95rem]">{es.queue.keepOpen}</p>
-        <p className="flex items-center justify-center gap-2 text-sm text-muted">
-          <Radio
-            aria-hidden
-            className={cn('size-4', transport === 'stream' ? 'text-success' : 'text-muted')}
-          />
-          {transport === 'stream'
-            ? es.queue.live
-            : transport === 'polling'
-              ? es.queue.polling
-              : es.queue.reconnecting}
-        </p>
+        {offline ? (
+          <p className="flex items-center justify-center gap-2 rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+            <WifiOff aria-hidden className="size-4 shrink-0" />
+            {es.queue.offline}
+          </p>
+        ) : (
+          <p className="flex items-center justify-center gap-2 text-sm text-muted">
+            <Radio
+              aria-hidden
+              className={cn('size-4', transport === 'stream' ? 'text-success' : 'text-muted')}
+            />
+            {transport === 'stream'
+              ? es.queue.live
+              : transport === 'polling'
+                ? es.queue.polling
+                : es.queue.reconnecting}
+          </p>
+        )}
       </div>
     </section>
   );
