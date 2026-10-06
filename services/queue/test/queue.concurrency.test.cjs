@@ -2,21 +2,11 @@
 // racing an admission, and two instances racing for the same tick. Two apps in this process share the
 // one Redis, exactly like two Cloud Run instances.
 const assert = require("node:assert/strict");
-const { after, before } = require("node:test");
-const { configure, createApp, randomUUID, seedEvent, sleep, untilRedisReady, useRedisApp } = require("./helpers.cjs");
+const { configure, randomUUID, seedEvent, sleep, useRedisApp } = require("./helpers.cjs");
 
 configure({ ADMISSION_BATCH_SIZE: "3", ADMISSION_INTERVAL_SECONDS: "3600", PASS_TTL_SECONDS: "600" });
 
-const { state, redisTest } = useRedisApp();
-let other = null; // the second instance
-before(async () => {
-  if (state.skip) return;
-  other = await createApp();
-  await untilRedisReady(other);
-});
-after(async () => {
-  if (other) await other.close();
-});
+const { state, redisTest } = useRedisApp({ second: true }); // state.other is the second instance
 
 const queueOf = (app) => app.get(require("../dist/queue/queue.service").QueueService);
 const admissionOf = (app) => app.get(require("../dist/queue/admission.service").AdmissionService);
@@ -56,7 +46,7 @@ redisTest("a RE-join racing the admission never leaves a buyer both admitted and
         work.push(
           (async () => {
             await sleep(Math.random() * 40);
-            await queueOf((i + attempt) % 2 === 0 ? state.app : other).join(eventId, user, now + 1000 + i);
+            await queueOf((i + attempt) % 2 === 0 ? state.app : state.other.app).join(eventId, user, now + 1000 + i);
           })(),
         );
       }
@@ -65,7 +55,7 @@ redisTest("a RE-join racing the admission never leaves a buyer both admitted and
       work.push(
         (async () => {
           await sleep(Math.random() * 50);
-          await admissionOf(k % 2 === 0 ? state.app : other).admitTick(now + k * tickMs);
+          await admissionOf(k % 2 === 0 ? state.app : state.other.app).admitTick(now + k * tickMs);
         })(),
       );
     }
@@ -85,7 +75,7 @@ redisTest("a status read racing the admission never answers 404 to a buyer who i
 
     let running = true;
     const notFound = [];
-    const readers = [state.app, other, state.app, other].map(async (app) => {
+    const readers = [state.app, state.other.app, state.app, state.other.app].map(async (app) => {
       while (running) {
         for (const user of crowd) {
           try {
@@ -100,7 +90,7 @@ redisTest("a status read racing the admission never answers 404 to a buyer who i
     const ticks = [];
     for (let k = 0; k < 8; k += 1) {
       await sleep(Math.random() * 15);
-      ticks.push(admissionOf(k % 2 === 0 ? state.app : other).admitTick(now + k * tickMs));
+      ticks.push(admissionOf(k % 2 === 0 ? state.app : state.other.app).admitTick(now + k * tickMs));
     }
     await Promise.all(ticks);
     running = false;
@@ -118,12 +108,12 @@ redisTest("two instances racing for the same tick admit one batch, not two", asy
   for (const [i, user] of crowd.entries()) await queueOf(state.app).join(eventId, user, now + i);
 
   // Both instances wake up for the same tick (same bucket) at the same moment; the batch is 3.
-  const first = await Promise.all([admissionOf(state.app).admitTick(now), admissionOf(other).admitTick(now)]);
+  const first = await Promise.all([admissionOf(state.app).admitTick(now), admissionOf(state.other.app).admitTick(now)]);
   assert.equal(first[0] + first[1], 3, `admitted ${first} in the same tick`);
   assert.equal(await state.redis.zcard(`queue:${eventId}`), 17);
 
   // The next tick is a new lock and admits the next batch, again only once.
-  const second = await Promise.all([admissionOf(state.app).admitTick(now + tickMs), admissionOf(other).admitTick(now + tickMs)]);
+  const second = await Promise.all([admissionOf(state.app).admitTick(now + tickMs), admissionOf(state.other.app).admitTick(now + tickMs)]);
   assert.equal(second[0] + second[1], 3, `admitted ${second} in the next tick`);
   assert.equal(await state.redis.zcard(`queue:${eventId}`), 14);
 

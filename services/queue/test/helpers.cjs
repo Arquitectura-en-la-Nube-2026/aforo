@@ -159,9 +159,14 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 /**
  * One app (plus the flushed test Redis) for a whole test file. `redisTest` skips, with the reason,
  * when Redis is not there; see the header of this file.
+ *
+ * `second: true` adds `state.other` ({ app, base }): another instance on the same Redis, like a second
+ * Cloud Run instance. It is created here, after the skip decision, and not in a `before` of the test
+ * file: that one ran before this one had decided, and without Redis it waited 5 s for a connection and
+ * failed every test instead of skipping them (the CI has no Redis).
  */
-function useRedisApp({ listening = false } = {}) {
-  const state = { app: null, base: null, redis: null, skip: null };
+function useRedisApp({ listening = false, second = false } = {}) {
+  const state = { app: null, base: null, redis: null, skip: null, other: null };
   before(async () => {
     const connected = await connectTestRedis();
     if (connected.skip) {
@@ -172,8 +177,13 @@ function useRedisApp({ listening = false } = {}) {
     if (listening) Object.assign(state, await createListeningApp());
     else state.app = await createApp();
     await untilRedisReady(state.app);
+    if (second) {
+      state.other = listening ? await createListeningApp() : { app: await createApp(), base: null };
+      await untilRedisReady(state.other.app);
+    }
   });
   after(async () => {
+    if (state.other) await state.other.app.close();
     if (state.app) await state.app.close();
     if (state.redis) await state.redis.quit();
   });

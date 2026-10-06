@@ -1,20 +1,10 @@
 // SSE against a real HTTP server (light-my-request cannot stream). Two instances share the one Redis.
 const assert = require("node:assert/strict");
-const { after, before } = require("node:test");
 const { configure, createListeningApp, randomUUID, readSse, seedEvent, sleep, untilRedisReady, useRedisApp } = require("./helpers.cjs");
 
 configure({ ADMISSION_BATCH_SIZE: "2", ADMISSION_INTERVAL_SECONDS: "3600", PASS_TTL_SECONDS: "600", SSE_HEARTBEAT_SECONDS: "1" });
 
-const { state, redisTest } = useRedisApp({ listening: true });
-let other = null; // a second instance, on its own port
-before(async () => {
-  if (state.skip) return;
-  other = await createListeningApp();
-  await untilRedisReady(other.app);
-});
-after(async () => {
-  if (other) await other.app.close();
-});
+const { state, redisTest } = useRedisApp({ listening: true, second: true }); // state.other: a second instance, own port
 
 const queueOf = (app) => app.get(require("../dist/queue/queue.service").QueueService);
 const admissionOf = (app) => app.get(require("../dist/queue/admission.service").AdmissionService);
@@ -60,7 +50,7 @@ redisTest("an admission done by ANOTHER instance reaches a stream connected to t
   // Read until the server closes the stream (the timeout is only the upper bound for a failing run).
   const reading = readSse(response, () => false, 6000);
   await sleep(300);
-  assert.equal(await admissionOf(other.app).admitTick(Date.now()), 1); // admitted by instance 2
+  assert.equal(await admissionOf(state.other.app).admitTick(Date.now()), 1); // admitted by instance 2
 
   const { messages, ended } = await reading;
   const admitted = messages.find((m) => m.event === "admitted");
@@ -93,7 +83,7 @@ redisTest("the stream announces each change of position, then admitted, over one
   await sleep(300);
   await admissionOf(state.app).admitTick(now); // a and b leave: c is now first
   await sleep(1500);
-  await admissionOf(other.app).admitTick(now + tickMs); // c is admitted
+  await admissionOf(state.other.app).admitTick(now + tickMs); // c is admitted
 
   const { messages, ended } = await reading;
   assert.deepEqual(
