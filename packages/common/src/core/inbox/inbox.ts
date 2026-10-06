@@ -1,27 +1,34 @@
-/** Remembers which messages a consumer already processed. Each service backs it with its own store. */
-export interface InboxStore {
-  has(messageId: string): Promise<boolean>;
-  mark(messageId: string): Promise<void>;
+export type InboxResult = 'applied' | 'duplicate';
+
+/** The service's database adapter inserts into an inbox table with a unique message_id. */
+export interface InboxTransaction {
+  insertIfAbsent(messageId: string): Promise<boolean>;
 }
 
-export type InboxResult = "applied" | "duplicate";
+/** Runs work in one database transaction, committing on success and rolling back on failure. */
+export interface InboxStore<TTransaction extends InboxTransaction> {
+  transaction<TResult>(work: (transaction: TTransaction) => Promise<TResult>): Promise<TResult>;
+}
 
 /**
- * Applies `effect` once per `messageId`.
+ * Applies a message and records its id in the same database transaction.
  *
- * The effect runs BEFORE the message is marked, and it must be idempotent (events/README.md:
- * "handlers must be safe to run twice"). The reason is the crash window: if the process dies
- * between the two steps, Pub/Sub redelivers the message and the effect runs again, which is
- * harmless. Marking first would be wrong: with `inbox:M` saved and the process dead before the
- * upsert, the retry is dropped as a duplicate and the projection never receives the event.
+ * The effect must use the transaction passed to it, not a separate connection. The adapter's
+ * insertIfAbsent must use a unique message_id (for example INSERT ... ON CONFLICT DO NOTHING),
+ * so concurrent deliveries cannot both apply the effect. Inserting before the effect is safe
+ * because a failed effect rolls back the inbox row along with its own writes.
+ *
+ * Redis consumers cannot implement this callback with separate commands. They must check the
+ * inbox key, update their projection and set the key in one service-specific Lua script.
  */
-export async function consumeOnce(
-  store: InboxStore,
+export function consumeOnce<TTransaction extends InboxTransaction>(
+  store: InboxStore<TTransaction>,
   messageId: string,
-  effect: () => Promise<void>,
+  effect: (transaction: TTransaction) => Promise<void>,
 ): Promise<InboxResult> {
-  if (await store.has(messageId)) return "duplicate";
-  await effect();
-  await store.mark(messageId);
-  return "applied";
+  return store.transaction<InboxResult>(async (transaction) => {
+    if (!(await transaction.insertIfAbsent(messageId))) return 'duplicate';
+    await effect(transaction);
+    return 'applied';
+  });
 }
