@@ -13,6 +13,7 @@ function configure(overrides = {}) {
     AUTH_SECRET: randomBytes(32).toString("base64url"),
     AUTH_ISSUER: "https://gateway.aforo.dev",
     FRONTEND_ORIGIN,
+    CATALOG_URL: "http://127.0.0.1:1",
     REDIS_URL: "",
     RATE_LIMIT_QUEUE_PER_MIN: "60",
     SERVICE_NAME: "gateway",

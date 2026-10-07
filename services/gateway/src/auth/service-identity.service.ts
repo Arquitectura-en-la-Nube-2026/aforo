@@ -7,9 +7,9 @@ const METADATA_TIMEOUT_MS = 1000;
 
 /**
  * Google OIDC ID tokens for the Gateway's calls to private services (contracts/conventions.md,
- * "Service-to-service calls"). In `dev` on GCP the queue only lets in the Gateway's service account
- * (infra/envs/dev/services.tf), and Cloud Run checks the token before the request reaches the service:
- * without it every join, status and stream is a 403.
+ * "Service-to-service calls"). In `dev` on GCP, private Catalog and Queue accept the Gateway's
+ * service account (infra/envs/dev/services.tf). Cloud Run checks the token before the request
+ * reaches either service.
  *
  * - AUTH_MODE=cloud (set by Terraform): the token comes from the instance's metadata server, for the
  *   target's custom audience `aforo-<service>` (infra/modules/cloud-run-service). That audience is
