@@ -3,6 +3,16 @@
 > Owner: Platform (Julián). Status: **draft** — the Platform steps work; the purchase path
 > depends on each unit being deployed. Script: [../plan/acceptance.md](../plan/acceptance.md).
 
+## The URL to open
+
+Always open the web at **https://aforo-web-68220265740.southamerica-east1.run.app** (the
+deterministic URL, `local.run_url.web` in `infra/envs/dev/services.tf`).
+
+Cloud Run also serves it at `https://aforo-web-u3phfgwoza-rj.a.run.app`, which is the URL
+`gcloud run services describe` and the console show. Do not use that one: the Gateway allows CORS
+only from `FRONTEND_ORIGIN` (the deterministic URL), so the browser blocks every API call from
+the other origin, and Orders returns the buyer to the deterministic URL after payment.
+
 ## The day before
 
 1. `make up`, then `make redis-up` (≥ 15 min, Memorystore takes up to ~10).
