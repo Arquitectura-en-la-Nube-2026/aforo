@@ -46,7 +46,14 @@ test("public event list and detail reach Catalog with query and correlation, wit
 });
 
 test("Catalog writes require a session and forward the validated user, body and idempotency key", async () => {
-  const body = { title: "Concert" };
+  const body = {
+    name: "Concert",
+    venue: "Main Hall",
+    startsAt: "2026-10-20T20:00:00Z",
+    salesOpensAt: "2026-10-10T12:00:00Z",
+    salesClosesAt: "2026-10-20T19:00:00Z",
+    sectors: [{ name: "General", capacity: 100, priceCents: 5000000 }],
+  };
   const unauthenticated = await inject({ method: "POST", url: "/api/v1/events", payload: body });
   assert.equal(unauthenticated.statusCode, 401);
   assert.equal(catalog.requests.length, 0);
@@ -65,16 +72,20 @@ test("Catalog writes require a session and forward the validated user, body and 
     });
   };
 
-  for (const [method, path, payload] of [
-    ["POST", "/api/v1/events", body],
-    ["PUT", `/api/v1/events/${eventId}/sales-rules`, { maxPerPerson: 4 }],
-    ["POST", `/api/v1/events/${eventId}/publish`, undefined],
+  for (const [method, path, payload, idempotencyKey] of [
+    ["POST", "/api/v1/events", body, "8f1b2c3d-0000-4000-8000-000000000002"],
+    ["PUT", `/api/v1/events/${eventId}/sales-rules`, {
+      maxTicketsPerPerson: 4,
+      reservationTtlSeconds: 480,
+      openingWindowSeconds: 30,
+    }, "8f1b2c3d-0000-4000-8000-000000000003"],
+    ["POST", `/api/v1/events/${eventId}/publish`, undefined, "8f1b2c3d-0000-4000-8000-000000000004"],
   ]) {
     const response = await inject({
       method, url: path, payload,
       headers: {
         authorization: `Bearer ${buyer.token}`,
-        "idempotency-key": "create-event-key",
+        "idempotency-key": idempotencyKey,
         "x-user-id": "forged",
         "x-user-email": "forged@example.com",
       },
@@ -86,7 +97,7 @@ test("Catalog writes require a session and forward the validated user, body and 
     assert.equal(sent.url, path);
     assert.equal(sent.headers["x-user-id"], buyer.userId);
     assert.equal(sent.headers["x-user-email"], buyer.email);
-    assert.equal(sent.headers["idempotency-key"], "create-event-key");
+    assert.equal(sent.headers["idempotency-key"], idempotencyKey);
     assert.equal(sent.headers.authorization, undefined);
     assert.equal(sent.headers["x-correlation-id"], response.headers["x-correlation-id"]);
     if (payload) assert.deepEqual(JSON.parse(sent.body), payload);
