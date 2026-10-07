@@ -8,7 +8,7 @@ file and announce it in the team channel.
 | ID   | Decision | Consequence |
 | ---- | -------- | ----------- |
 | D-01 | TypeScript with NestJS on **Node 24 (LTS)** in all five services | `packages/common` serves everyone without duplication. Node 24 required by current Prism; supported by Angular 20 and NestJS 11 |
-| D-02 | Angular 20 with SSR on public routes | The frontend deploys as its own container |
+| D-02 | ~~Angular 20 with SSR on public routes~~ — **superseded by [ADR-0007](../adr/0007-web-framework-next.md)**: Next.js with SSR on public routes | The frontend deploys as its own container |
 | D-03 | Single monorepo with CI per affected folder | One branch per person, `main` always deployable |
 | D-04 | One GCP project, `aforo-dev-teamf` (the ID `aforo-dev` was taken globally), in `southamerica-east1`, billed to Julián's account | Julián creates the project and grants access; nobody else can unblock it |
 | D-05 | One Cloud SQL instance with one database and one user per service | Turned off when nobody is working |

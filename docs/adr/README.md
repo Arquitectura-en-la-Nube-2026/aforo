@@ -24,3 +24,4 @@ implemented in this slice because of D-07.
 | [0004](0004-terraform-owns-config-ci-owns-code.md) | Terraform owns config, CI owns code and traffic; runtime switches only via `make`; probes on `/health/live`. Amended by D-21: the pre-warmer owns the minimum instances of gateway and queue | `.claude/rules/infra.md`, `Makefile`, build-and-deploy |
 | [0005](0005-dev-sizing-and-demo-determinism.md) | Connection budget and instance caps; one Orders instance; DLQ timing | `infra/README.md`, `.env.example` files |
 | [0006](0006-inventory-partition-key.md) | No sharding in the slice; `event_id` is the partition key when needed | `services/inventory` schema |
+| [0007](0007-web-framework-next.md) | Frontend is Next.js (App Router) instead of Angular; same port, env vars and health routes (supersedes D-02) | `apps/web`, `.claude/rules/frontend.md` |
