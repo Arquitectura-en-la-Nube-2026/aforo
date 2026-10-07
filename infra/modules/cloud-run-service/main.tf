@@ -140,6 +140,9 @@ resource "google_cloud_run_v2_service" "this" {
     # CI owns the image and traffic; the pre-warmer owns the service-level minimum (ADR-0004).
     # ignore_changes can't be conditional, so every service ignores the minimum; Terraform only
     # sets it at creation.
+    # template[0].revision must NOT be ignored: CI deploys name the revision, and resending that
+    # name with a new config fails (409). Setting it back to null lets Cloud Run name the next one,
+    # so a plan after a CI deploy shows `revision = "aforo-x-000NN-abc" -> null`; that is expected.
     ignore_changes = [
       template[0].containers[0].image,
       traffic,

@@ -1,0 +1,125 @@
+name: function (reusable)
+
+# Lint, test and bundle one Cloud Run function; deploy uploads the immutable source archive
+# gs://<bucket>/<function>/<git-sha>.zip and points the function at it (D-19, ADR-0004:
+# no env flags, configuration stays Terraform's). Functions deploy all-at-once.
+#
+# Deploy runs only by hand (workflow_dispatch) or on merge when DEPLOY_ON_MERGE is "true".
+
+on:
+  workflow_call:
+    inputs:
+      function:
+        description: Folder under functions/ ; deployed as aforo-<function>
+        required: true
+        type: string
+      entry_point:
+        required: true
+        type: string
+
+env:
+  REGION: southamerica-east1
+  BUCKET: aforo-dev-teamf-functions
+  WIF_PROVIDER: projects/68220265740/locations/global/workloadIdentityPools/github/providers/aforo-repo
+  WIF_SERVICE_ACCOUNT: github-ci@aforo-dev-teamf.iam.gserviceaccount.com
+  FOLDER: functions/${{ inputs.function }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      ready: ${{ steps.unit.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v7
+      # A function without code yet (no package.json) is skipped, not failed.
+      - id: unit
+        run: |
+          if [ -f "$FOLDER/package.json" ] && [ -f package-lock.json ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$FOLDER has no package.json yet; skipping"
+          fi
+      - if: steps.unit.outputs.ready == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - if: steps.unit.outputs.ready == 'true'
+        run: npm ci
+      # @aforo/common exposes its types from dist/, so build it before lint and test.
+      - if: steps.unit.outputs.ready == 'true'
+        run: npm run build --workspace packages/common
+      - if: steps.unit.outputs.ready == 'true'
+        run: npm run lint --if-present --workspace "$FOLDER"
+      - if: steps.unit.outputs.ready == 'true'
+        run: npm test --if-present --workspace "$FOLDER"
+      - if: steps.unit.outputs.ready == 'true'
+        run: npm run build --workspace "$FOLDER"
+      # The archive needs a package.json for the platform to install runtime dependencies. If the
+      # unit's build doesn't write one, derive it: workspace packages (@aforo/*) are bundled.
+      - if: steps.unit.outputs.ready == 'true'
+        name: Package source archive
+        run: |
+          if [ ! -f "$FOLDER/dist/package.json" ]; then
+            node -e '
+              const pkg = require(process.argv[1]);
+              const deps = Object.fromEntries(Object.entries(pkg.dependencies ?? {}).filter(([n]) => !n.startsWith("@aforo/")));
+              const out = { name: pkg.name.replace("@aforo/", "aforo-"), version: pkg.version, private: true, main: "index.js", engines: { node: "24" }, dependencies: deps };
+              require("fs").writeFileSync(process.argv[2], JSON.stringify(out, null, 2) + "\n");
+            ' "$GITHUB_WORKSPACE/$FOLDER/package.json" "$FOLDER/dist/package.json"
+            echo "::notice::Generated dist/package.json from $FOLDER/package.json"
+          fi
+          cd "$FOLDER/dist" && zip -qr "$GITHUB_WORKSPACE/source.zip" .
+      - if: steps.unit.outputs.ready == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: source-${{ inputs.function }}
+          path: source.zip
+
+  deploy:
+    needs: check
+    if: >-
+      needs.check.outputs.ready == 'true' && (
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_ON_MERGE == 'true'))
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-function-${{ inputs.function }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      NAME: aforo-${{ inputs.function }}
+      OBJECT: gs://aforo-dev-teamf-functions/${{ inputs.function }}/${{ github.sha }}.zip
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: source-${{ inputs.function }}
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+
+      # Immutable: the object name is the git SHA and is never overwritten.
+      - name: Upload source archive
+        run: gcloud storage cp --no-clobber source.zip "$OBJECT"
+
+      - name: Deploy
+        run: |
+          gcloud functions deploy "$NAME" --gen2 --region "$REGION" \
+            --source "$OBJECT" --runtime nodejs24 --entry-point "${{ inputs.entry_point }}" \
+            --trigger-http --no-allow-unauthenticated \
+            --service-account "$NAME-run@aforo-dev-teamf.iam.gserviceaccount.com" \
+            --build-service-account "projects/aforo-dev-teamf/serviceAccounts/aforo-functions-build@aforo-dev-teamf.iam.gserviceaccount.com" \
+            --quiet
+          REV=$(gcloud run services describe "$NAME" --region "$REGION" --format='value(status.latestReadyRevisionName)')
+          {
+            echo "Source: $OBJECT"
+            echo "Revision: $REV"
+            echo "Rollback: \`gcloud run services update-traffic $NAME --region $REGION --to-revisions <previous>=100\`"
+          } >> "$GITHUB_STEP_SUMMARY"

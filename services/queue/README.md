@@ -1,7 +1,8 @@
 # queue — Waiting room & admission
 
 > Owner: Cristian · Contract: [contracts/openapi/queue.yaml](../../contracts/openapi/queue.yaml)
-> Status: not started · Also owns the queue screen in `apps/web`.
+> Status: implemented and tested against a real Redis; not yet run on GCP or behind the real Gateway
+> in `dev` · Also owns the queue screen in `apps/web`.
 
 Decides purchase order and admits at a pace. Redis only, no relational DB. The service with the
 most domain logic, so it starts first (Mon Sept 28).
@@ -59,10 +60,81 @@ Consumes `EventPublished` (`queue-event-published`) and `SalesRulesConfigured`
 | Key | Type | Content |
 | --- | ---- | ------- |
 | `queue:{eventId}` | sorted set | member `userId`, score per RF-05 |
-| `admitted:{eventId}:{userId}` | string + TTL | `passToken` |
-| `event:{eventId}` | hash | projection (`salesOpensAt`, `salesClosesAt`, `openingWindowSeconds`) |
+| `admitted:{eventId}:{userId}` | string + TTL | `<passExpiresAt in epoch ms>:<passToken>` (the expiry is stored, not derived from the TTL, so `passExpiresAt` does not drift between calls) |
+| `event:{eventId}` | hash | projection (`salesOpensAt`, `salesClosesAt`, `openingWindowSeconds`), plus `publishedAt` and `rulesAt`: the `occurredAt` (epoch ms) of the last message of each kind applied. An older one is skipped, so rules changed from 0 to 60 s stay at 60 s even if the old message arrives last |
 | `inbox:{messageId}` | string + TTL | consumed message ids |
 | `admission:{eventId}:{tick}` | string + TTL | admission lock for one tick (ADR-0002) |
+
+## Behavior the contract leaves open (decided here, for the contracts owner to confirm)
+
+| Case | What the service does | Why |
+| ---- | --------------------- | --- |
+| `estimatedWaitSeconds` | `ceil(position / ADMISSION_BATCH_SIZE) * ADMISSION_INTERVAL_SECONDS` | The ticks needed to reach the position. Batch 500, 5 s: position 500 → 5 s, position 501 → 10 s |
+| `aheadOf` | `position - 1` while waiting; `0` when admitted | `position - 1` would be -1 for an admitted buyer and break the contract minimum of 0 |
+| Event with no projection (Catalog did not publish it, or Redis was recreated) | `join` → 404 `NOT_FOUND` | "I do not know this event" is not "the sale is closed" (409) |
+| Only `SalesRulesConfigured` arrived | Still 404 | Rules alone cannot say whether the sale is open |
+| `openingWindowSeconds` never arrived | Treated as 0: arrival order from the first second | EventPublished alone is enough to open the queue |
+| Pass expired and the buyer joins again | They go to the **end** of the queue | The pass is not renewed (D-07); the 10 minutes are the buyer's chance |
+| `status` / `stream` for a buyer who never joined or whose pass expired | 404 `NOT_FOUND` | The contract lists 404 and nothing else for this case |
+| Buyer holds a pass and the sale closes | `join` still returns their pass; a new buyer gets 409 | A pass is a promise, closing the sale does not revoke it |
+| Buyer is still waiting when the sale closes | `join` returns their place, and admission keeps serving the queue; a new buyer gets 409 | Same promise as the pass. Before, a page reload answered "not open" to a buyer whom the next tick would admit |
+| Re-join | Keeps the place (`ZADD NX`) | Natural idempotency |
+| `AUTH_MODE` | Reserved, not read | The service trusts `X-User-Id`; Cloud Run IAM decides who can call it. The shared `auth` module does not exist yet |
+
+## How the queue stays correct
+
+- **Three Lua scripts** (`src/queue/queue-scripts.ts`) because moving a buyer between "in the queue"
+  and "has a pass" touches two keys. As separate commands each has a gap: a `join` that checks for a
+  pass and then adds to the queue can lose to an admission in between, leaving the buyer admitted
+  *and* waiting; a `status` that reads the pass and then the rank can answer 404 to a buyer who was
+  just admitted. `test/queue.concurrency.test.cjs` provokes both (and was checked to fail against the
+  two-command versions).
+- **The tick lock** (`SET admission:{eventId}:{tick} NX`) only stops two instances from admitting the
+  same tick twice. It does not protect the queue-to-pass move: that is the script.
+- **SSE reads Redis.** The admission runs on whichever instance wins the lock, usually not the one
+  the buyer is connected to, so every open stream reads its state once a second and sends
+  `position` only when it changed. The first message is a snapshot, so an admission between `join`
+  and opening the stream is not missed. The server closes the stream after `admitted`.
+- **Push consumers** (`events.controller.ts`) use one Redis Lua script to check the inbox key,
+  update the event projection and mark the message. Concurrent deliveries cannot both apply the
+  effect. An older fact is skipped and marked consumed, so a retried old message cannot undo a newer
+  one. A projection error leaves no inbox marker, allowing Pub/Sub to retry.
+
+## Run it locally
+
+```bash
+docker run --rm -p 6379:6379 redis:7
+cp .env.example .env            # set REDIS_URL if Redis is elsewhere
+npm run dev --workspace=@aforo/queue
+node scripts/seed-event.mjs     # Catalog does not exist yet: seeds an event through the push endpoints
+curl -X POST localhost:8080/api/v1/queue/8f1b2c3d-0000-4000-8000-000000000001/join \
+     -H "X-User-Id: $(node -p 'crypto.randomUUID()')"
+```
+
+`X-User-Id` must be a UUID: it is what the Gateway forwards, and it is the sorted-set member.
+
+## In `dev`
+
+- **Deploy with Redis on.** The CI smoke test needs `/health/ready` = 200 (`.github/workflows/_service.yml`),
+  and without Redis it is 503 by design. So run `make redis-up` first, then `make deploy SERVICE=queue`.
+  A deploy that failed this way cannot be retried at the same commit: tags in Artifact Registry are
+  immutable and every build has a new digest, so the push is rejected until there is a new commit.
+- **Seed an event.** `make seed` is still a TODO (Catalog), so the projection starts empty and every `join`
+  answers 404. Until Catalog exists, push one through the script with an ID token of an account allowed to
+  invoke `aforo-queue` (the queue is private):
+
+```bash
+node scripts/seed-event.mjs --url https://aforo-queue-<project-number>.southamerica-east1.run.app \
+     --token "$(gcloud auth print-identity-token)"
+```
+
+## Tests
+
+`npm test --workspace=@aforo/queue` needs a real Redis, because the rules worth testing (the scripts,
+the tick lock, the SSE reading Redis) only exist there. The tests use **database 15 and flush it**, so
+they refuse any other `QUEUE_TEST_REDIS_URL`. Without Redis they skip and say so; set
+`REQUIRE_REDIS=1` to make that a failure. The CI workflow has no Redis service today, so there the
+Redis tests skip: add one (or `REQUIRE_REDIS=1` plus a service container) to make them count.
 
 ## Configuration
 

@@ -17,6 +17,13 @@ on:
         description: Unit folder (services/<service> unless overridden, e.g. apps/web)
         required: false
         type: string
+      smoke_path:
+        description: >-
+          Path the smoke test expects 200 from on the tag URL. /health/ready by default; queue
+          uses /health/live because it answers 503 while Memorystore is off (ADR-0001).
+        required: false
+        type: string
+        default: /health/ready
 
 env:
   PROJECT_ID: aforo-dev-teamf
@@ -51,6 +58,9 @@ jobs:
           cache: npm
       - if: steps.unit.outputs.ready == 'true'
         run: npm ci
+      # @aforo/common exposes its types from dist/, so build it before lint and test.
+      - if: steps.unit.outputs.ready == 'true'
+        run: npm run build --workspace packages/common
       - if: steps.unit.outputs.ready == 'true'
         run: npm run lint --if-present --workspace "$FOLDER"
       - if: steps.unit.outputs.ready == 'true'
@@ -84,13 +94,21 @@ jobs:
           service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
       - uses: google-github-actions/setup-gcloud@v3
 
-      # Immutable artifact: tagged with the full git SHA, deployed by digest.
-      - name: Build and push
+      # Immutable artifact: tagged with the full git SHA, deployed by digest. Tags can't be
+      # overwritten, so a retry of the same commit reuses the image instead of rebuilding it
+      # (builds aren't byte-reproducible, and promotion must reuse the same artifact).
+      - name: Build and push (or reuse)
         run: |
-          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
-          docker build -f "$FOLDER/Dockerfile" -t "$IMAGE:${{ github.sha }}" .
-          docker push "$IMAGE:${{ github.sha }}"
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:${{ github.sha }}")
+          if EXISTING=$(gcloud artifacts docker images describe "$IMAGE:${{ github.sha }}" \
+              --format='value(image_summary.digest)' 2>/dev/null) && [ -n "$EXISTING" ]; then
+            DIGEST="$IMAGE@$EXISTING"
+            echo "Reusing existing image $DIGEST" >> "$GITHUB_STEP_SUMMARY"
+          else
+            gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+            docker build -f "$FOLDER/Dockerfile" -t "$IMAGE:${{ github.sha }}" .
+            docker push "$IMAGE:${{ github.sha }}"
+            DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:${{ github.sha }}")
+          fi
           echo "DIGEST=$DIGEST" >> "$GITHUB_ENV"
           echo "Image: $DIGEST" >> "$GITHUB_STEP_SUMMARY"
 
@@ -120,14 +138,15 @@ jobs:
       - name: Smoke test on the tag URL
         env:
           TOKEN: ${{ steps.id-token.outputs.id_token }}
+          SMOKE_PATH: ${{ inputs.smoke_path }}
         run: |
           for i in 1 2 3 4 5; do
-            CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$TAG_URL/health/ready")
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$TAG_URL$SMOKE_PATH")
             echo "attempt $i: $CODE"
             [ "$CODE" = 200 ] && exit 0
             sleep 5
           done
-          echo "::error::/health/ready did not return 200; traffic stays on the previous revision"
+          echo "::error::$SMOKE_PATH did not return 200; traffic stays on the previous revision"
           exit 1
 
       - name: Shift traffic

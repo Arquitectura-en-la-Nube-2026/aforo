@@ -1,13 +1,12 @@
 # The five services and web (infra/README.md: sizing from ADR-0005, wiring from ADR-0004).
-# Env vars that need resources not declared yet (functions) are added together with them.
 
 data "google_project" "this" {}
 
 locals {
   # Deterministic Cloud Run URL, for a service that needs its own URL or where references would
-  # form a cycle (web <-> gateway).
+  # form a cycle (web <-> gateway, gateway <-> mock-payment-gateway).
   run_url = {
-    for name in ["web", "inventory"] :
+    for name in ["web", "gateway", "inventory"] :
     name => "https://aforo-${name}-${data.google_project.this.number}.${var.region}.run.app"
   }
 
@@ -43,6 +42,15 @@ module "gateway" {
   max_instances = 3
   public        = true
 
+  # Proxies the queue's SSE stream: same limit as queue, or Cloud Run cuts it every minute.
+  request_timeout_seconds = 3600
+
+  # Per-IP quota counters in Memorystore (ADR-0001, amended): not enforced while REDIS_URL is "".
+  vpc_egress = {
+    network    = google_compute_network.aforo.id
+    subnetwork = google_compute_subnetwork.aforo.id
+  }
+
   secret_env = {
     AUTH_SECRET = google_secret_manager_secret.auth.secret_id
   }
@@ -55,6 +63,8 @@ module "gateway" {
     QUEUE_URL                  = module.queue.uri
     ORDERS_URL                 = module.orders.uri
     INVENTORY_URL              = module.inventory.uri
+    MOCK_PAYMENT_GATEWAY_URL   = module.mock_payment_gateway.uri
+    REDIS_URL                  = module.memorystore.url
     RATE_LIMIT_QUEUE_PER_MIN   = "60"
     RATE_LIMIT_DEFAULT_PER_MIN = "600"
   })
@@ -135,6 +145,7 @@ module "orders" {
   env = merge(local.common_env, {
     DB_POOL_MAX              = "3"
     INVENTORY_URL            = module.inventory.uri
+    PAYMENT_GATEWAY_URL      = module.mock_payment_gateway.uri
     TOPIC_ORDER_PAID         = "aforo.orders.order-paid"
     FRONTEND_ORIGIN          = local.run_url.web
     HTTP_CONNECT_TIMEOUT_MS  = "500"

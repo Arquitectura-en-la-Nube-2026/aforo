@@ -86,10 +86,20 @@ redis-down: tf-state ## Destroy Memorystore; the rest stays as it is
 seed: ## Run the idempotent catalog seed against dev — TODO
 	@echo "WARNING: seed not implemented yet (TODO(catalog): services/catalog/seed); skipping"
 
+FUNCTIONS := dlq-monitor prewarmer mock-payment-gateway
+
 .PHONY: deploy
-deploy: ## Build and deploy one service: make deploy SERVICE=orders — TODO (CI does this on main)
-	@test -n "$(SERVICE)" || (echo "usage: make deploy SERVICE=<name>" && exit 1)
-	@echo "TODO(platform): build, push to Artifact Registry, gcloud run deploy aforo-$(SERVICE)" && exit 1
+deploy: ## Deploy one unit from main through CI (immutable artifact, blue/green): make deploy SERVICE=gateway
+	@case "$(SERVICE)" in \
+	  gateway|catalog|queue|orders|inventory) WF=service-$(SERVICE).yml ;; \
+	  web) WF=web.yml ;; \
+	  dlq-monitor|prewarmer|mock-payment-gateway) WF=function-$(SERVICE).yml ;; \
+	  *) echo "usage: make deploy SERVICE=<$(SERVICES) web $(FUNCTIONS)>"; exit 1 ;; \
+	esac; \
+	gh workflow run "$$WF" --ref main && sleep 5 && \
+	RUN=$$(gh run list --workflow "$$WF" --event workflow_dispatch --limit 1 --json databaseId -q '.[0].databaseId') && \
+	echo "Deploying $(SERVICE) from main: $$(gh run view $$RUN --json url -q .url)" && \
+	gh run watch "$$RUN" --exit-status
 
 .PHONY: fault
 fault: tf-state ## Fault injection on the mock payment gateway (Terraform switch, ~1 min): make fault MODE=<none|error|timeout>
@@ -97,5 +107,9 @@ fault: tf-state ## Fault injection on the mock payment gateway (Terraform switch
 	$(call tf_apply,$(CUR_ENV_ON),$(CUR_REDIS),$(MODE))
 
 .PHONY: poison
-poison: ## Publish an invalid message to demo DLQ + dlq-monitor alert: make poison TOPIC=<topic> — TODO
-	@echo "TODO(platform): gcloud pubsub topics publish $(TOPIC) --message 'not-an-envelope'" && exit 1
+poison: ## Publish an invalid message to demo DLQ + dlq-monitor alert (E-05): make poison TOPIC=aforo.catalog.event-published
+	@test -n "$(TOPIC)" || (echo "usage: make poison TOPIC=<topic>" && exit 1)
+	@CID=$$(uuidgen | tr 'A-Z' 'a-z'); \
+	gcloud pubsub topics publish "$(TOPIC)" --project "$(PROJECT)" --message 'not-an-envelope' \
+	  --attribute "type=Poison,correlationId=$$CID" >/dev/null && \
+	echo "Published poison message, correlationId=$$CID. It dead-letters after 5 attempts (~2-3 min); then search Cloud Logging for jsonPayload.correlationId=\"$$CID\"."

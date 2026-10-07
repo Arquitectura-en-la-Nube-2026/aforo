@@ -11,7 +11,7 @@ Workload Identity Federation — no service-account keys in the repo.
 | `common.yml` | `packages/common/**` | lint, test, build | publish/build | TODO |
 | `service-<name>.yml` ×5 | `services/<name>/**`, `packages/common/**` | lint, test, docker build | lint, test, docker build; deploy (push by SHA, `--no-traffic --tag`, smoke, `--to-latest`) only if `DEPLOY_ON_MERGE=true` or run by hand | ✅ in place |
 | `web.yml` | `apps/web/**` | lint, test, build | same as services for `aforo-web` | ✅ in place |
-| `function-<name>.yml` ×3 | `functions/<name>/**`, `packages/common/**` | lint, test, bundle | upload `<sha>.zip`, `gcloud functions deploy --source` (no env flags), smoke | TODO |
+| `function-<name>.yml` ×3 | `functions/<name>/**`, `packages/common/**` | lint, test, bundle | lint, test, bundle; deploy (upload `<sha>.zip`, `gcloud functions deploy --source`, no env flags) only if `DEPLOY_ON_MERGE=true` or run by hand | ✅ `dlq-monitor`, `prewarmer`, `mock-payment-gateway` (runs once its code is on `main`) |
 | `infra.yml` | `infra/**` | `terraform fmt -check`, `validate`, `make plan` | — (Platform runs `make apply` by hand from `main`) | ✅ in place |
 | `e2e.yml` | manual (`workflow_dispatch`) | — | run acceptance tests against `dev` | TODO |
 
@@ -27,6 +27,11 @@ The service workflow is written once as a reusable workflow (`_service.yml`) and
 five thin `service-<name>.yml` files and `web.yml`. Each unit's Dockerfile lives in its folder and
 is built with the repo root as context.
 
+Function archives contain `dist/` as built by the unit. If the build doesn't write
+`dist/package.json`, the workflow derives one from the unit's `package.json` (runtime
+`dependencies` minus the bundled `@aforo/*` workspace packages), so dependencies left external by
+esbuild get installed by the platform.
+
 ## Turning deploys on
 
 Deploys are **off on merge** until the team is ready, so merges to `main` cost nothing.
@@ -34,5 +39,7 @@ Deploys are **off on merge** until the team is ready, so merges to `main` cost n
 - Deploy one unit now: Actions → `service-<name>` (or `web`) → **Run workflow** on `main`.
 - Deploy on every merge: `gh variable set DEPLOY_ON_MERGE --body true` (unset it to stop).
 
-The smoke test calls `/health/ready` on the new revision, so run `make up` first for units with a
-database; if it fails, traffic stays on the previous revision.
+The smoke test calls `/health/ready` on the new revision (`queue`: `/health/live`, since it is
+503 while Memorystore is off), so run `make up` first for units with a database; if it fails,
+traffic stays on the previous revision. Re-running a failed deploy of the same commit reuses its
+image (tags are immutable), so fix the environment and run it again.

@@ -1,0 +1,19 @@
+name: function-prewarmer
+
+on:
+  pull_request:
+    paths: ["functions/prewarmer/**", "packages/common/**", ".github/workflows/_function.yml", ".github/workflows/function-prewarmer.yml"]
+  push:
+    branches: [main]
+    paths: ["functions/prewarmer/**", "packages/common/**", ".github/workflows/_function.yml", ".github/workflows/function-prewarmer.yml"]
+  workflow_dispatch:
+
+jobs:
+  function:
+    uses: ./.github/workflows/_function.yml
+    with:
+      function: prewarmer
+      entry_point: prewarmer
+    permissions:
+      contents: read
+      id-token: write

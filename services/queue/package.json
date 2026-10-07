@@ -1,0 +1,28 @@
+{
+  "name": "@aforo/queue",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aforo waiting room: queue order, admission and SSE",
+  "scripts": {
+    "predev": "npm run build --workspace=@aforo/common && npm run build",
+    "dev": "node --env-file=.env dist/main.js",
+    "build": "tsc -p tsconfig.json",
+    "pretest": "npm run build --workspace=@aforo/common && npm run build",
+    "test": "node --test --test-concurrency=1 \"test/*.test.cjs\"",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@aforo/common": "^0.1.0",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-fastify": "^11.0.0",
+    "fastify": "^5.0.0",
+    "ioredis": "^5.11.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.1",
+    "typescript": "^5.8.0"
+  }
+}

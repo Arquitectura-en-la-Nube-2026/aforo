@@ -5,3 +5,5 @@ export * from "./nest/health/health.controller";
 export * from "./nest/health/health.module";
 export * from "./nest/health/health.service";
 export * from "./nest/logging/request-logging.middleware";
+export * from "./nest/shutdown/shutdown.module";
+export * from "./nest/shutdown/shutdown.service";
