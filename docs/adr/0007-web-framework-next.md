@@ -1,6 +1,6 @@
 # 0007 · Frontend framework: Next.js instead of Angular
 
-- **Status:** Proposed · supersedes D-02 (pending review by Sergio and Julián)
+- **Status:** Accepted (2026-10-07, Julián) · supersedes D-02
 - **Date:** 2026-10-05
 - **Deciders:** Cristian
 - **Affects:** `apps/web`, `.claude/rules/frontend.md`, `apps/web/README.md`, `apps/web/CLAUDE.md`
