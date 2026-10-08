@@ -41,7 +41,8 @@ async function upsertEvent(q: Queryable, seed: SeedEvent): Promise<void> {
 /**
  * One transaction: every seed event upserted and both facts of each written to the outbox, even
  * when nothing changed. That re-emission is the point (ADR-0001): a fresh Memorystore gets the
- * queue projection back, and Inventory re-applies its upserts.
+ * queue projection back, and Inventory re-applies its upserts (name and price only: it never
+ * resets capacity or availability).
  */
 export async function seed(db: Pool, topics: CatalogConfig): Promise<Event[]> {
   const client = await db.connect();

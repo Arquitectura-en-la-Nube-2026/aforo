@@ -66,7 +66,9 @@ of them with the sale `OPEN`. It must be **idempotent** (fixed UUIDs, upserts): 
 `make redis-up` always run it, and **every run re-emits** `EventPublished` and
 `SalesRulesConfigured` (new outbox rows even when nothing changed), so Queue rebuilds its
 projection in a freshly created Memorystore (ADR-0001) and Inventory re-applies its upserts
-(tested on Thu Oct 1).
+(tested on Thu Oct 1). Inventory's upsert refreshes only the sector name and price: a re-seed
+does **not** reset capacity or `available` there, so a sector sold out in a rehearsal stays sold
+out until its reservations expire.
 
 | Event | Sale | Sectors (capacity) | Why |
 | ----- | ---- | ------------------ | --- |
@@ -76,7 +78,10 @@ projection in a freshly created Memorystore (ADR-0001) and Inventory re-applies 
 
 Dates are fixed, not relative to the run, so every run converges to the same rows, and the
 prewarmer skips all three (window over, or more than 30 days ahead): the seed never raises
-min instances. E-01 publishes its own event through the API.
+min instances. This holds only until **Nov 1, 2026**: from then on the Concierto opens within 30
+days and a seed run schedules its warm-up, and from Nov 14 the Festival is `CLOSED` (the seed DB
+test asserts the sale states, so it fails too). Move the dates forward if the demo outlives
+Delivery 4. E-01 publishes its own event through the API.
 
 It writes everything and the six facts in one transaction, then flushes. If Pub/Sub fails the run
 still succeeds with `event=seed_publish_deferred`, and housekeeping publishes within a minute. All

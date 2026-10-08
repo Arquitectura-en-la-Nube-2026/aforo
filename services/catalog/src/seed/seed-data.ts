@@ -21,7 +21,9 @@ export interface SeedEvent {
 /**
  * The three demo events (acceptance step 2). Fixed ids and fixed dates, so every run converges to
  * the same rows and the prewarmer skips them all (windows over, or more than 30 days ahead): the
- * seed never raises min instances. E-01 publishes its own event through the API (demo runbook).
+ * seed never raises min instances. Valid until 2026-11-01 (then the Concierto is within 30 days;
+ * from 2026-11-14 the Festival is CLOSED and seed.db.test fails): move the dates if the demo
+ * outlives Delivery 4. E-01 publishes its own event through the API (demo runbook).
  */
 export const SEED_EVENTS: SeedEvent[] = [
   {
