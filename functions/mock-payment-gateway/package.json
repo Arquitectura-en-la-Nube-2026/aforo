@@ -1,0 +1,43 @@
+{
+  "name": "@aforo/mock-payment-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aforo mock payment gateway (Cloud Run function)",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node24 --minify \"--external:@google-cloud/*\" --outfile=dist/index.js",
+    "dev": "npm run build && functions-framework --source=dist/index.js --target=mockPaymentGateway --port=8081",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@aforo/common": "*",
+    "@google-cloud/firestore": "^9.3.0",
+    "@google-cloud/functions-framework": "^5.0.5",
+    "@google-cloud/tasks": "^7.2.1"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.6.3",
+    "esbuild": "^0.28.2",
+    "jest": "^30.5.2",
+    "ts-jest": "^29.4.14",
+    "typescript": "~5.9"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/test"
+    ],
+    "transform": {
+      "^.+.ts$": [
+        "ts-jest",
+        {
+          "tsconfig": "tsconfig.json",
+          "diagnostics": false
+        }
+      ]
+    }
+  }
+}
