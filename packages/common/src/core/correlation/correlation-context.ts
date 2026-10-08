@@ -26,6 +26,15 @@ export function getCorrelationId(): string | undefined {
   return context.getStore()?.correlationId;
 }
 
+/**
+ * Replaces the current context's correlation ID. For Pub/Sub push requests, which carry the ID in the
+ * envelope instead of a header: logs then follow the purchase across the bus (E-05).
+ */
+export function adoptCorrelationId(value: string): void {
+  const store = context.getStore();
+  if (store && uuidV4Pattern.test(value)) store.correlationId = value;
+}
+
 export function setCorrelationUserId(userId: string): void {
   const store = context.getStore();
   if (store) store.userId = userId;
