@@ -1,12 +1,55 @@
 # @aforo/common
 
-> Owner: Juan José · Status: initial foundation implemented
+> Owner: Juan José · Status: every module in the table implemented
 
 Shared NestJS library for the behaviors in `contracts/conventions.md`. Implemented: the error
 catalog/filter, correlation context, structured request logging, live/readiness health module,
 the event `envelope` (validates the Pub/Sub push body, the envelope and its `data` against the
-contract schemas), the `inbox` helper (`consumeOnce`) and `shutdown` (`ShutdownService`). The
-rest of the table remains planned.
+contract schemas; `buildEnvelope` for producers), the `inbox` helper (`consumeOnce`), `shutdown`
+(`ShutdownService`), `auth` (`@CurrentUser()`, `ServiceAuthClient`), `idempotency`
+(`IdempotencyInterceptor`), `outbox` (`OutboxPublisher` over Pub/Sub REST), `housekeeping`
+(`HousekeepingModule`), `http` (`HttpClient`) and `@PushEnvelope()` for push endpoints.
+
+## Wiring a producer service (catalog, inventory, orders)
+
+```ts
+// A @Global module of the service exports its table adapters under the common tokens.
+{ provide: OUTBOX_STORE, useExisting: OutboxRepository },            // implements OutboxStore
+{ provide: IDEMPOTENCY_REPOSITORY, useExisting: IdempotencyKeyRepository }, // implements IdempotencyRepository
+
+// AppModule imports:
+OutboxModule.forRoot({ projectId: process.env.GCP_PROJECT_ID! }),
+HousekeepingModule.forRoot({ imports: [ReservationsModule], sweeps: [ExpireSweep] }),
+
+// State-changing route:
+@Post() @UseInterceptors(IdempotencyInterceptor)
+create(@CurrentUser() user: AuthenticatedUser, @Body() body: CreateDto) { ... }
+
+// In the service: write the fact in the business transaction, flush after the commit.
+await tx.outbox.add(topic, buildEnvelope({ type: "ReservationExpired", producer: "inventory", data }));
+await this.outboxPublisher.flush();
+
+// Push endpoint:
+@Post("internal/v1/events/orders-reservation-expired") @HttpCode(204)
+onExpired(@PushEnvelope("ReservationExpired") envelope: EventEnvelope<ReservationExpiredData>) { ... }
+```
+
+Behaviors to know:
+
+- **Outbox** publishes in order and stops at the first failure (that row and the rest stay pending
+  for housekeeping). Delivery is at-least-once; consumers deduplicate by `messageId`. Each message
+  carries `type` and `correlationId` as Pub/Sub attributes too. `PUBSUB_EMULATOR_HOST` switches it
+  to the emulator without auth.
+- **Idempotency** stores only successful responses, and the fingerprint covers method, path,
+  buyer and body: the same key from another buyer or endpoint is `409 IDEMPOTENCY_CONFLICT`. It is
+  a cache, not a lock — two concurrent first calls both run, so the business transaction must be
+  safe under duplicates anyway (unique constraints, conditional updates).
+- **Housekeeping** runs every sweep even if one fails, then flushes the outbox, and answers `500`
+  if anything failed so Cloud Scheduler records it.
+- **`@PushEnvelope(type)`** answers `400` on an invalid message (it dead-letters) and makes the
+  envelope's `correlationId` the request's, so the consumer's logs join the purchase (E-05).
+- **`ServiceAuthClient.header(audience)`**: use the target's custom audience `aforo-<service>`,
+  which is also valid on revision tag URLs. `AUTH_MODE=dev` sends no header.
 
 The event schemas are copied from `contracts/events` into `src/core/envelope/event-schemas.generated.ts`
 by `npm run gen:events`; a test fails when the copy drifts from the contract.

@@ -7,3 +7,8 @@ export * from "./nest/health/health.service";
 export * from "./nest/logging/request-logging.middleware";
 export * from "./nest/shutdown/shutdown.module";
 export * from "./nest/shutdown/shutdown.service";
+export * from "./nest/auth/current-user.decorator";
+export * from "./nest/events/push-envelope.decorator";
+export * from "./nest/housekeeping/housekeeping.module";
+export * from "./nest/idempotency/idempotency.interceptor";
+export * from "./nest/outbox/outbox.module";
