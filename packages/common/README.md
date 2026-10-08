@@ -63,7 +63,7 @@ when neither exists, logs use `unknown` instead of attributing them to another s
 | ------ | -------- | ------- |
 | `errors` | `DomainError(code, detail)`, error-code catalog (mirrors `ErrorCode` in the contract), global `ProblemJsonFilter` | all |
 | `correlation` | Middleware reading/generating `X-Correlation-Id`, async-local context, HTTP client that forwards it | all |
-| `logging` | JSON logger with `severity`, `correlationId`, `userId`, `route`, `status`, `latencyMs`; request-log middleware | all |
+| `logging` | JSON logger with `severity`, `correlationId`, `userId`, `route`, `status`, `latencyMs`; request-log middleware; `JsonLogger` for `app.useLogger()` (object messages become fields, e.g. `jsonPayload.event`) | all |
 | `auth` | `@CurrentUser()` decorator reading `X-User-Id`/`X-User-Email`; Google ID-token client for service calls; `AUTH_MODE=dev` fake token | all |
 | `idempotency` | Interceptor + repository port storing key, SHA-256 of the body, status and response; returns the stored response on repeat with `Idempotent-Replayed: true` (R-06); `IDEMPOTENCY_CONFLICT` on a different body | catalog, orders, inventory |
 | `envelope` | `EventEnvelope<T>` type, builder, and the four event type names + payload types (generated from `contracts/events/*.schema.json`) | all producers/consumers |
