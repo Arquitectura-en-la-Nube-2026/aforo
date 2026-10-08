@@ -1,0 +1,31 @@
+{
+  "name": "@aforo/catalog",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Aforo catalog: events, sectors, sales window and sales rules",
+  "scripts": {
+    "predev": "npm run build --workspace=@aforo/common && npm run build",
+    "dev": "node --env-file=.env dist/main.js",
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "migrate": "node dist/db/migrate.js",
+    "pretest": "npm run build --workspace=@aforo/common && npm run build",
+    "test": "node --test --test-concurrency=1 \"test/*.test.cjs\"",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@aforo/common": "^0.1.0",
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-fastify": "^11.0.0",
+    "fastify": "^5.0.0",
+    "pg": "^8.23.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.1",
+    "@types/pg": "^8.23.1",
+    "typescript": "^5.8.0"
+  }
+}
