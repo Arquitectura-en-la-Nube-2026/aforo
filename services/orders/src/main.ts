@@ -2,12 +2,12 @@ import 'reflect-metadata';
 import { ValidationError, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { DomainError, JsonLogger, ProblemJsonFilter, installGracefulShutdown } from './common';
+import { DomainError, JsonLogger, JsonLogLevel, ProblemJsonFilter } from './common';
 import { loadConfig } from './config/config';
 
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
-  const logger = new JsonLogger({ level: config.logLevel });
+  const logger = new JsonLogger({ level: config.logLevel as JsonLogLevel });
 
   // rawBody: the webhook HMAC is computed over the exact bytes received.
   const app = await NestFactory.create(AppModule, { rawBody: true, bufferLogs: true });
@@ -26,9 +26,9 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  // SIGTERM: readiness flips to 503, in-flight requests finish (incl. outbox flush), pools close.
+  // SIGTERM (ShutdownModule): readiness flips to 503, in-flight requests finish (incl. outbox
+  // flush), then the pool closes.
   app.enableShutdownHooks();
-  installGracefulShutdown(app, { logger });
 
   await app.listen(config.port, '0.0.0.0');
   logger.log({ event: 'startup', port: config.port });

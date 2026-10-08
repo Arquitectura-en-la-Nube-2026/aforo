@@ -1,43 +1,41 @@
 /**
- * Single import point for @aforo/common (owner: Juan Jose). The package has no code yet, so the
- * names below are ASSUMED from packages/common/README.md. When it lands, fix naming drift here.
- *
- * Assumed contracts (ports the service implements against our own Postgres tables):
- *  - HttpClient.request({ method, url, headers, body }) -> { status, body }; throws HttpTransportError
- *    (kind: 'connect_timeout' | 'response_timeout' | 'network') and applies the default timeouts.
- *  - ServiceAuthClient.header(audience, userId?) -> { authorization } (OIDC ID token, fake in dev).
- *  - OUTBOX_STORE port: findPending(limit) / markPublished(id), consumed by OutboxPublisher.flush().
- *  - IDEMPOTENCY_REPOSITORY port: find(key) / save(record), consumed by IdempotencyInterceptor.
- *  - HousekeepingModule.forRoot({ imports, sweeps }): POST /internal/v1/housekeeping; flushes the
- *    outbox and runs each sweep ({ name, run() }).
- *  - PubSubPushGuard + @PushEnvelope(): decode the push body, 400 on an invalid envelope.
+ * Single import point for @aforo/common (owner: Juan Jose): the framework-agnostic core from
+ * `@aforo/common`, the Nest pieces from `@aforo/common/nest`. Ports the service implements against
+ * its own Postgres tables: OutboxStore (OUTBOX_STORE) and IdempotencyRepository
+ * (IDEMPOTENCY_REPOSITORY), see messaging/repositories.ts.
  */
-export { DomainError, HttpClient, HttpTransportError, buildEnvelope } from '@aforo/common';
-export type { ErrorCode, EventEnvelope } from '@aforo/common';
+export {
+  DomainError,
+  HttpClient,
+  HttpTransportError,
+  OutboxPublisher,
+  ServiceAuthClient,
+  buildEnvelope,
+  getCorrelationId,
+} from '@aforo/common';
+export type {
+  ErrorCode,
+  EventEnvelope,
+  IdempotencyRecord,
+  IdempotencyRepository,
+  OutboxMessage,
+  OutboxStore,
+  ReservationExpiredData,
+} from '@aforo/common';
 export {
   CorrelationMiddleware,
   CurrentUser,
   HealthModule,
+  HealthService,
   HousekeepingModule,
   IDEMPOTENCY_REPOSITORY,
   IdempotencyInterceptor,
   JsonLogger,
   OUTBOX_STORE,
   OutboxModule,
-  OutboxPublisher,
   ProblemJsonFilter,
-  PubSubPushGuard,
   PushEnvelope,
-  RequestLogInterceptor,
-  ServiceAuthClient,
+  RequestLoggingMiddleware,
   ShutdownModule,
-  getCorrelationId,
-  installGracefulShutdown,
 } from '@aforo/common/nest';
-export type {
-  HousekeepingSweep,
-  IdempotencyRecord,
-  IdempotencyRepository,
-  OutboxMessage,
-  OutboxStore,
-} from '@aforo/common/nest';
+export type { HousekeepingSweep, JsonLogLevel } from '@aforo/common/nest';

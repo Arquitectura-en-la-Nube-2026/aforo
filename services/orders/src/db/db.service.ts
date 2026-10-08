@@ -1,5 +1,6 @@
 import { Inject, Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
+import { HealthService } from '../common';
 import { APP_CONFIG, AppConfig } from '../config/config';
 
 export interface Queryable {
@@ -11,13 +12,14 @@ export interface Queryable {
 export class DbService implements Queryable, OnApplicationShutdown {
   private readonly pool: Pool;
 
-  constructor(@Inject(APP_CONFIG) config: AppConfig) {
+  constructor(@Inject(APP_CONFIG) config: AppConfig, health: HealthService) {
     this.pool = new Pool({
       connectionString: config.databaseUrl,
       max: config.dbPoolMax,
       connectionTimeoutMillis: 2000,
     });
     this.pool.on('error', () => undefined);
+    health.register('database', () => this.ping());
   }
 
   query<R extends QueryResultRow = any>(text: string, params?: unknown[]): Promise<QueryResult<R>> {

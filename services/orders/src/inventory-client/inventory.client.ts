@@ -18,6 +18,8 @@ export interface CallContext {
   buyerId?: string;
 }
 
+const INVENTORY_AUDIENCE = 'aforo-inventory';
+
 /** Client for Inventory's internal API. Inventory rejections propagate with the same code. */
 @Injectable()
 export class InventoryClient {
@@ -48,7 +50,7 @@ export class InventoryClient {
         url,
         body,
         headers: {
-          ...(await this.auth.header(this.config.inventoryUrl, ctx.buyerId)),
+          ...(await this.auth.header(INVENTORY_AUDIENCE)),
           'idempotency-key': ctx.idempotencyKey,
           'x-correlation-id': ctx.correlationId,
         },

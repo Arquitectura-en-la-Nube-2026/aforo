@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { HealthService } from '@aforo/common/nest';
 import { DbService } from '../src/db/db.service';
 import { IdempotencyKeyRepository, InboxRepository, OutboxRepository } from '../src/messaging/repositories';
 import { OrdersRepository } from '../src/orders/orders.repository';
@@ -12,7 +13,7 @@ const url = process.env.TEST_DATABASE_URL;
 const describeDb = url ? describe : describe.skip;
 
 describeDb('repositories (real Postgres)', () => {
-  const db = new DbService({ databaseUrl: url, dbPoolMax: 2 } as any);
+  const db = new DbService({ databaseUrl: url, dbPoolMax: 2 } as any, new HealthService());
   const orders = new OrdersRepository(db);
   const payments = new PaymentsRepository(db);
   const inbox = new InboxRepository(db);
