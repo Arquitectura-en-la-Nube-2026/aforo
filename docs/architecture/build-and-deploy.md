@@ -59,7 +59,10 @@ Startup and liveness probes call `/health/live`. `/health/ready` is checked by t
 ## Schema changes (expand / contract)
 
 1. **Expand**: migration only adds (nullable column, new table, new index). Runs as a Cloud Run
-   job `aforo-<svc>-migrate` using the new image, **before** step 3.
+   job `aforo-<svc>-migrate` using the new image, **before** step 3. The job is declared in
+   Terraform (`jobs` of `infra/modules/cloud-run-service`) with the service's identity, env and
+   Cloud SQL socket; CI sets its image to the new digest and runs it with `--wait` right after
+   the push, before the no-traffic revision (`.github/workflows/_service.yml`).
 2. Deploy code that writes both / reads new.
 3. **Contract**: a later release removes the old column once no revision serving traffic uses it.
 

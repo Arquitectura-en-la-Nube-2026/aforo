@@ -170,3 +170,93 @@ resource "google_cloud_run_v2_service_iam_member" "invoker" {
   role     = "roles/run.invoker"
   member   = each.value
 }
+
+# Migrations and the catalog seed (docs/architecture/build-and-deploy.md): the same image, identity
+# and configuration as the service, so a job sees exactly what the service sees. CI sets the image
+# on every deploy and runs the migrate job before the new revision gets traffic.
+resource "google_cloud_run_v2_job" "this" {
+  for_each = var.jobs
+
+  name                = "aforo-${var.name}-${each.key}"
+  location            = var.region
+  deletion_protection = false
+
+  template {
+    task_count  = 1
+    parallelism = 1
+
+    template {
+      service_account = google_service_account.runtime.email
+      max_retries     = 0
+      timeout         = "300s"
+
+      containers {
+        # Placeholder until the first CI deploy of the service; it has no node, so running a job
+        # before that fails loudly instead of pretending to work.
+        image   = "us-docker.pkg.dev/cloudrun/container/job"
+        command = ["node"]
+        args    = each.value
+
+        resources {
+          limits = {
+            cpu    = "1"
+            memory = "512Mi"
+          }
+        }
+
+        dynamic "env" {
+          for_each = var.env
+          content {
+            name  = env.key
+            value = env.value
+          }
+        }
+
+        dynamic "env" {
+          for_each = var.secret_env
+          content {
+            name = env.key
+            value_source {
+              secret_key_ref {
+                secret  = env.value
+                version = "latest"
+              }
+            }
+          }
+        }
+
+        dynamic "volume_mounts" {
+          for_each = var.cloud_sql_instance == "" ? [] : [1]
+          content {
+            name       = "cloudsql"
+            mount_path = "/cloudsql"
+          }
+        }
+      }
+
+      dynamic "volumes" {
+        for_each = var.cloud_sql_instance == "" ? [] : [1]
+        content {
+          name = "cloudsql"
+          cloud_sql_instance {
+            instances = [var.cloud_sql_instance]
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [
+    google_secret_manager_secret_iam_member.runtime,
+    google_project_iam_member.cloudsql_client,
+  ]
+
+  lifecycle {
+    # CI owns the image, as for the service (ADR-0004).
+    ignore_changes = [
+      template[0].template[0].containers[0].image,
+      client,
+      client_version,
+    ]
+  }
+}

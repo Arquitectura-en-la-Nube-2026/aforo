@@ -1,7 +1,7 @@
 # catalog — Catalog & events
 
 > Owner: Juan José · Contract: [contracts/openapi/catalog.yaml](../../contracts/openapi/catalog.yaml)
-> Status: service and seed done; the seed job in Terraform and `make seed` are pending (infra)
+> Status: service and seed done; the seed runs as the Cloud Run job `aforo-catalog-seed` (`make seed`)
 
 Owner of the event, its sectors, its sales window and its rules. The **only** service that
 decides whether a sale is open. PostgreSQL, database `catalog`.

@@ -112,6 +112,22 @@ jobs:
           echo "DIGEST=$DIGEST" >> "$GITHUB_ENV"
           echo "Image: $DIGEST" >> "$GITHUB_STEP_SUMMARY"
 
+      # Expand-only migrations (build-and-deploy.md) run with the new image before the new revision
+      # exists, so it never serves against an older schema. The other jobs of the unit (the catalog
+      # seed) get the same image, so `make seed` runs the code that is deployed. Units without a
+      # database have no jobs. Needs Cloud SQL on (`make up`), as the smoke test does.
+      - name: Migrate with the new image
+        run: |
+          JOBS=$(gcloud run jobs list --region "$REGION" --format='value(metadata.name)' \
+            --filter="metadata.name ~ ^$SERVICE-")
+          for JOB in $JOBS; do
+            gcloud run jobs update "$JOB" --image "$DIGEST" --region "$REGION" --quiet
+          done
+          if echo "$JOBS" | grep -qx "$SERVICE-migrate"; then
+            gcloud run jobs execute "$SERVICE-migrate" --region "$REGION" --wait
+            echo "Migrations applied by $SERVICE-migrate." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       # Blue/green: new revision with no traffic, reachable only on its tag URL.
       - name: Deploy without traffic
         run: |

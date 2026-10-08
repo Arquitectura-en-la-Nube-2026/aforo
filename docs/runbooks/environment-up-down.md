@@ -48,8 +48,14 @@ make plan      # what an apply would change, with the current switches
 ## `make up`
 
 1. Terraform: `env_on = true` → Cloud SQL `ALWAYS`, Cloud Scheduler jobs resumed.
-2. Runs `make seed` (idempotent catalog seed; re-emits events so projections rebuild).
-   Until catalog ships it, this prints `WARNING: seed not implemented yet … skipping` — expected.
+2. Runs `make seed`: executes the Cloud Run job `aforo-catalog-seed` (catalog image, catalog's
+   identity and env) and waits. Idempotent; it re-emits the events so projections rebuild
+   (`services/catalog/README.md`, "Seed"). Until catalog has been deployed once, the job has no
+   catalog image and this prints `WARNING: catalog is not deployed yet … skipping` — expected.
+
+Migrations are not part of `make up`: every deploy of catalog, orders and inventory runs its
+`aforo-<svc>-migrate` job first (`docs/architecture/build-and-deploy.md`), which needs Cloud SQL
+on. So the order after a fresh environment is `make up`, deploy the three services, `make seed`.
 
 Starting a stopped Cloud SQL instance takes a few minutes; `/health/ready` of catalog, orders and
 inventory turns 200 once it accepts connections.

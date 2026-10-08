@@ -83,6 +83,10 @@ module "catalog" {
   ]
 
   cloud_sql_instance = module.cloud_sql.connection_name
+  jobs = {
+    migrate = ["dist/db/migrate.js"]
+    seed    = ["dist/seed/seed.js"]
+  }
   secret_env = {
     DATABASE_URL = module.cloud_sql.database_url_secret_ids["catalog"]
   }
@@ -137,6 +141,7 @@ module "orders" {
   ]
 
   cloud_sql_instance = module.cloud_sql.connection_name
+  jobs               = { migrate = ["dist/db/migrate.js"] }
   secret_env = {
     DATABASE_URL   = module.cloud_sql.database_url_secret_ids["orders"]
     WEBHOOK_SECRET = google_secret_manager_secret.webhook.secret_id
@@ -174,6 +179,7 @@ module "inventory" {
   ]
 
   cloud_sql_instance = module.cloud_sql.connection_name
+  jobs               = { migrate = ["dist/db/migrate.js"] }
   secret_env = {
     DATABASE_URL = module.cloud_sql.database_url_secret_ids["inventory"]
   }

@@ -83,8 +83,19 @@ redis-down: tf-state ## Destroy Memorystore; the rest stays as it is
 	$(call tf_apply,$(CUR_ENV_ON),false,$(CUR_FAULT))
 
 .PHONY: seed
-seed: ## Run the idempotent catalog seed against dev — TODO
-	@echo "WARNING: seed not implemented yet (TODO(catalog): services/catalog/seed); skipping"
+seed: ## Run the idempotent catalog seed against dev (Cloud Run job aforo-catalog-seed)
+	@IMAGE=$$(gcloud run jobs describe aforo-catalog-seed --project $(PROJECT) --region $(REGION) \
+	  --format='value(spec.template.spec.template.spec.containers[0].image)' 2>/dev/null); \
+	if [ -z "$$IMAGE" ] || [[ "$$IMAGE" == *cloudrun/container* ]]; then \
+	  echo "WARNING: catalog is not deployed yet (aforo-catalog-seed has no catalog image); skipping. Run make deploy SERVICE=catalog, then make seed"; \
+	else \
+	  for i in 1 2 3; do \
+	    gcloud run jobs execute aforo-catalog-seed --project $(PROJECT) --region $(REGION) --wait && exit 0; \
+	    echo "Seed attempt $$i failed (Cloud SQL may still be starting); retrying in 30 s"; \
+	    sleep 30; \
+	  done; \
+	  echo "ERROR: seed failed 3 times"; exit 1; \
+	fi
 
 FUNCTIONS := dlq-monitor prewarmer mock-payment-gateway
 

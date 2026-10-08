@@ -85,3 +85,9 @@ variable "vpc_egress" {
   })
   default = null
 }
+
+variable "jobs" {
+  description = "Cloud Run jobs aforo-<name>-<key> sharing this service's identity, env, secrets and Cloud SQL; each runs `node <args>` in the service image (CI sets it)."
+  type        = map(list(string))
+  default     = {}
+}
