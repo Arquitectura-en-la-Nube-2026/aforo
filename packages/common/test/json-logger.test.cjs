@@ -73,3 +73,27 @@ test("Nest's error(message, stack, context) keeps the stack; an Error message ke
   assert.equal(lines[1].message, "db down");
   assert.equal(lines[1].error, "db down");
 });
+
+test("an Error passed after the message keeps its message and stack", () => {
+  const logger = new JsonLogger({ service: "orders" });
+  const err = new Error("connect ECONNREFUSED");
+  const [line] = capture(() => logger.error("payment call failed", err, "PaymentGateway"));
+  assert.equal(line.message, "payment call failed");
+  assert.equal(line.context, "PaymentGateway");
+  assert.equal(line.error, "connect ECONNREFUSED");
+  assert.equal(line.stack, err.stack);
+});
+
+test("unserializable fields never make the logger throw", () => {
+  const logger = new JsonLogger({ service: "orders" });
+  const order = { id: "o-1", amount: 10n };
+  order.self = order;
+  let lines;
+  assert.doesNotThrow(() => {
+    lines = capture(() => logger.log({ event: "order_paid", order }));
+  });
+  assert.equal(lines.length, 1);
+  assert.equal(lines[0].message, "order_paid");
+  assert.equal(lines[0].order.amount, "10");
+  assert.equal(lines[0].order.self, "[Circular]");
+});
