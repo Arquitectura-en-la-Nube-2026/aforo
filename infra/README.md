@@ -70,6 +70,9 @@ Never run `terraform apply` by hand: it would reset every switch to its default.
 - CI owns the deployed image (services, web) or source archive (functions) and the traffic split.
 - Cloud Run services: created with a placeholder image;
   `lifecycle { ignore_changes = [template[0].containers[0].image, traffic, client, client_version] }`.
+- Cloud Run jobs (`aforo-<svc>-migrate`, `aforo-catalog-seed`): declared through `jobs` of the
+  service module, same identity, env, secrets and Cloud SQL as the service; placeholder image,
+  `ignore_changes` on it. CI sets the image on every deploy and runs the migrate job.
 - Functions: created from a placeholder archive; `ignore_changes = [build_config[0].source]`.
 - `gateway` and `queue`: also `ignore_changes` on the service-level `scaling[0].min_instance_count`
   (created at 0): the pre-warmer owns it (D-21).
