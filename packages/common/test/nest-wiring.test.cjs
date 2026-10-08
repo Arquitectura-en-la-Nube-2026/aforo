@@ -4,7 +4,17 @@
 require("reflect-metadata");
 const assert = require("node:assert/strict");
 const { after, before, test } = require("node:test");
-const { Body, Controller, Global, HttpCode, Injectable, Module, Post, UseInterceptors } = require("@nestjs/common");
+const {
+  Body,
+  Controller,
+  Global,
+  HttpCode,
+  Inject,
+  Injectable,
+  Module,
+  Post,
+  UseInterceptors,
+} = require("@nestjs/common");
 const { APP_FILTER, NestFactory } = require("@nestjs/core");
 const { FastifyAdapter } = require("@nestjs/platform-fastify");
 const { getCorrelationId } = require("../dist");
@@ -61,12 +71,22 @@ Module({
   exports: [OUTBOX_STORE, IDEMPOTENCY_REPOSITORY],
 })(StoresModule);
 
+// The sweep depends on a provider of its own domain module, like Orders' RefundSweep on
+// PaymentsRepository: housekeeping must resolve it there, not instantiate it again.
+class ReservationsRepository {
+  overdue() {
+    return ["r-1"];
+  }
+}
+Injectable()(ReservationsRepository);
+
 class ExpireSweep {
-  constructor() {
+  constructor(reservations) {
     this.name = "expire";
+    this.reservations = reservations;
   }
   async run() {
-    state.sweepRuns.push("expire");
+    state.sweepRuns.push(`expire:${this.reservations.overdue().join(",")}`);
     // A sweep that writes a fact: the flush after the sweeps must publish it.
     state.outbox.push({
       id: "m-1",
@@ -78,6 +98,7 @@ class ExpireSweep {
   }
 }
 Injectable()(ExpireSweep);
+Inject(ReservationsRepository)(ExpireSweep, undefined, 0);
 
 class BrokenSweep {
   constructor() {
@@ -89,6 +110,12 @@ class BrokenSweep {
   }
 }
 Injectable()(BrokenSweep);
+
+class ReservationsModule {}
+Module({
+  providers: [ReservationsRepository, ExpireSweep, BrokenSweep],
+  exports: [ExpireSweep, BrokenSweep],
+})(ReservationsModule);
 
 class OrdersController {
   create(user, body) {
@@ -120,7 +147,7 @@ Module({
         publish: async (topic, data, attributes) => state.published.push({ topic, attributes }),
       },
     }),
-    HousekeepingModule.forRoot({ sweeps: [ExpireSweep, BrokenSweep] }),
+    HousekeepingModule.forRoot({ imports: [ReservationsModule], sweeps: [ExpireSweep, BrokenSweep] }),
   ],
   controllers: [OrdersController],
   providers: [{ provide: APP_FILTER, useClass: ProblemJsonFilter }],
@@ -206,7 +233,7 @@ test("housekeeping: runs the sweeps, then flushes what they wrote, and answers 2
   state.sweepRuns.length = 0;
   const response = await inject({ method: "POST", url: "/internal/v1/housekeeping" });
   assert.equal(response.statusCode, 204);
-  assert.deepEqual(state.sweepRuns, ["expire", "broken"]);
+  assert.deepEqual(state.sweepRuns, ["expire:r-1", "broken"]);
   assert.equal(state.published.length, 1);
   assert.deepEqual(state.published[0], {
     topic: "aforo.inventory.reservation-expired",
@@ -223,7 +250,7 @@ test("housekeeping: a failing sweep does not stop the others or the flush, and a
     const response = await inject({ method: "POST", url: "/internal/v1/housekeeping" });
     assert.equal(response.statusCode, 500);
     assert.equal(response.json().code, "INTERNAL");
-    assert.deepEqual(state.sweepRuns, ["expire", "broken"]);
+    assert.deepEqual(state.sweepRuns, ["expire:r-1", "broken"]);
     assert.equal(state.published.length, 1, "the outbox was still flushed");
   } finally {
     state.failSweep = false;

@@ -12,3 +12,4 @@ export * from "./nest/events/push-envelope.decorator";
 export * from "./nest/housekeeping/housekeeping.module";
 export * from "./nest/idempotency/idempotency.interceptor";
 export * from "./nest/outbox/outbox.module";
+export * from "./nest/logging/json-logger";

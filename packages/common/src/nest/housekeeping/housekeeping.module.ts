@@ -20,8 +20,9 @@ export interface HousekeepingSweep {
 }
 
 export interface HousekeepingOptions {
-  /** Modules that provide the sweeps' dependencies. */
+  /** Modules that provide **and export** the sweeps (each sweep lives with its domain). */
   imports?: ModuleMetadata["imports"];
+  /** Sweep classes to run, resolved from `imports`; they are not instantiated a second time here. */
   sweeps?: Array<Type<HousekeepingSweep>>;
 }
 
@@ -89,7 +90,8 @@ export class HousekeepingModule {
       imports: options.imports ?? [],
       controllers: [HousekeepingController],
       providers: [
-        ...sweeps,
+        // Only injected, never re-provided: a second instance here could not resolve the sweep's
+        // dependencies, which live in its own module.
         {
           provide: HOUSEKEEPING_SWEEPS,
           inject: sweeps,
