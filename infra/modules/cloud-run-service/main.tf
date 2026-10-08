@@ -246,7 +246,10 @@ resource "google_cloud_run_v2_job" "this" {
     }
   }
 
-  depends_on = [google_secret_manager_secret_iam_member.runtime]
+  depends_on = [
+    google_secret_manager_secret_iam_member.runtime,
+    google_project_iam_member.cloudsql_client,
+  ]
 
   lifecycle {
     # CI owns the image, as for the service (ADR-0004).

@@ -89,7 +89,12 @@ seed: ## Run the idempotent catalog seed against dev (Cloud Run job aforo-catalo
 	if [ -z "$$IMAGE" ] || [[ "$$IMAGE" == *cloudrun/container* ]]; then \
 	  echo "WARNING: catalog is not deployed yet (aforo-catalog-seed has no catalog image); skipping. Run make deploy SERVICE=catalog, then make seed"; \
 	else \
-	  gcloud run jobs execute aforo-catalog-seed --project $(PROJECT) --region $(REGION) --wait; \
+	  for i in 1 2 3; do \
+	    gcloud run jobs execute aforo-catalog-seed --project $(PROJECT) --region $(REGION) --wait && exit 0; \
+	    echo "Seed attempt $$i failed (Cloud SQL may still be starting); retrying in 30 s"; \
+	    sleep 30; \
+	  done; \
+	  echo "ERROR: seed failed 3 times"; exit 1; \
 	fi
 
 FUNCTIONS := dlq-monitor prewarmer mock-payment-gateway
