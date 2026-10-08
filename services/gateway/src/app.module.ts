@@ -14,6 +14,10 @@ import { LoginService } from "./auth/login.service";
 import { ServiceIdentityService } from "./auth/service-identity.service";
 import { CatalogProxyController } from "./catalog/catalog-proxy.controller";
 import { CatalogProxyService } from "./catalog/catalog-proxy.service";
+import { AvailabilityProxyController } from "./inventory/availability-proxy.controller";
+import { MockGatewayProxyController } from "./mock-gateway/mock-gateway-proxy.controller";
+import { OrdersProxyController } from "./orders/orders-proxy.controller";
+import { UpstreamService } from "./upstream/upstream.service";
 import { SessionAuthGuard } from "./auth/session-auth.guard";
 import { loadGatewayConfig } from "./config/gateway-config";
 import { QueueProxyController } from "./queue/queue-proxy.controller";
@@ -32,7 +36,15 @@ const config = loadGatewayConfig();
     HealthModule,
     ShutdownModule,
   ],
-  controllers: [LoginController, QueueProxyController, CatalogProxyController],
+  controllers: [
+    LoginController,
+    QueueProxyController,
+    // Before Catalog: /api/v1/events/{id}/availability is Inventory's, not an event detail.
+    AvailabilityProxyController,
+    CatalogProxyController,
+    OrdersProxyController,
+    MockGatewayProxyController,
+  ],
   providers: [
     { provide: "GATEWAY_CONFIG", useValue: config },
     LoginService,
@@ -40,6 +52,7 @@ const config = loadGatewayConfig();
     ServiceIdentityService,
     CatalogProxyService,
     QueueProxyService,
+    UpstreamService,
     // Order matters: the quota runs before the session check, so requests with a bad token spend it too.
     { provide: APP_GUARD, useClass: RateLimitGuard },
     SessionAuthGuard,

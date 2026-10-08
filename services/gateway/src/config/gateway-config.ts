@@ -5,6 +5,10 @@ export interface GatewayConfig {
   frontendOrigin: string;
   catalogUrl: string;
   queueUrl: string;
+  ordersUrl: string;
+  inventoryUrl: string;
+  /** The mock payment function; its URL is also its ID-token audience (functions have no custom audience). */
+  mockPaymentGatewayUrl: string;
   /** Null while Memorystore is off: the per-IP quota is then not enforced (it fails open). */
   redisUrl: string | null;
   rateLimitQueuePerMinute: number;
@@ -12,6 +16,14 @@ export interface GatewayConfig {
   authMode: "dev" | "cloud";
   /** Where the instance's metadata server answers. Only tests change it (GCE_METADATA_HOST). */
   metadataHost: string;
+}
+
+function httpUrl(env: NodeJS.ProcessEnv, name: string): string {
+  const value = env[name]?.trim().replace(/\/+$/, "");
+  if (!value || !URL.canParse(value) || !["http:", "https:"].includes(new URL(value).protocol)) {
+    throw new Error(`${name} must be an HTTP URL`);
+  }
+  return value;
 }
 
 export function loadGatewayConfig(env = process.env): GatewayConfig {
@@ -36,6 +48,9 @@ export function loadGatewayConfig(env = process.env): GatewayConfig {
   }
   const queueUrl = env.QUEUE_URL?.trim().replace(/\/+$/, "");
   if (!queueUrl || !URL.canParse(queueUrl)) throw new Error("QUEUE_URL must be a valid URL");
+  const ordersUrl = httpUrl(env, "ORDERS_URL");
+  const inventoryUrl = httpUrl(env, "INVENTORY_URL");
+  const mockPaymentGatewayUrl = httpUrl(env, "MOCK_PAYMENT_GATEWAY_URL");
 
   const redisUrl = env.REDIS_URL?.trim() || null;
   if (redisUrl && !/^rediss?:\/\//.test(redisUrl)) throw new Error("REDIS_URL must start with redis:// or rediss://");
@@ -49,5 +64,19 @@ export function loadGatewayConfig(env = process.env): GatewayConfig {
   if (authMode !== "dev" && authMode !== "cloud") throw new Error("AUTH_MODE must be dev or cloud");
   const metadataHost = env.GCE_METADATA_HOST?.trim() || "metadata.google.internal";
 
-  return { port, authSecret, authIssuer, frontendOrigin, catalogUrl, queueUrl, redisUrl, rateLimitQueuePerMinute, authMode, metadataHost };
+  return {
+    port,
+    authSecret,
+    authIssuer,
+    frontendOrigin,
+    catalogUrl,
+    queueUrl,
+    ordersUrl,
+    inventoryUrl,
+    mockPaymentGatewayUrl,
+    redisUrl,
+    rateLimitQueuePerMinute,
+    authMode,
+    metadataHost,
+  };
 }

@@ -10,7 +10,9 @@ export async function createApp(config: GatewayConfig, options: NestApplicationO
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({ trustProxy: trustOneProxyHop }),
-    options,
+    // rawBody: the payment webhook is forwarded byte for byte (Orders checks an HMAC over it), and
+    // Orders' JSON bodies are forwarded as the browser sent them.
+    { ...options, rawBody: true },
   );
 
   app.enableCors({

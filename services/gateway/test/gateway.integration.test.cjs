@@ -10,6 +10,9 @@ process.env.AUTH_ISSUER = "https://gateway.aforo.dev";
 process.env.FRONTEND_ORIGIN = "http://localhost:4200";
 process.env.CATALOG_URL = "http://127.0.0.1:1"; // required by config; no Catalog call in this test
 process.env.QUEUE_URL = "http://127.0.0.1:1"; // required by the config; this test never reaches the queue
+process.env.ORDERS_URL = "http://127.0.0.1:1";
+process.env.INVENTORY_URL = "http://127.0.0.1:1";
+process.env.MOCK_PAYMENT_GATEWAY_URL = "http://127.0.0.1:1";
 
 test("Gateway follows the login, error, and health contracts", async () => {
   const { AppModule } = require("../dist/app.module");
