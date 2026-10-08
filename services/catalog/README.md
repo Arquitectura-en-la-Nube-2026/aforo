@@ -1,7 +1,7 @@
 # catalog — Catalog & events
 
 > Owner: Juan José · Contract: [contracts/openapi/catalog.yaml](../../contracts/openapi/catalog.yaml)
-> Status: service done (endpoints, outbox, housekeeping); seed pending
+> Status: service and seed done; the seed job in Terraform and `make seed` are pending (infra)
 
 Owner of the event, its sectors, its sales window and its rules. The **only** service that
 decides whether a sale is open. PostgreSQL, database `catalog`.
@@ -59,14 +59,35 @@ Consumes: nothing.
 Tables: `event`, `sector`, `sales_rules`, `outbox`, `idempotency_key`.
 Migrations in `migrations/`. `npm run migrate` needs only `DATABASE_URL`.
 
-## Seed (extra deliverable, needed by Wed Sept 30)
+## Seed
 
-`seed/` — script that creates and publishes **three demo events** with small sectors, one of them
-with the sale `OPEN`. It must be **idempotent** (fixed UUIDs, upserts): `make up` and
+`src/seed/` (`npm run seed`) creates and publishes **three demo events** with small sectors, one
+of them with the sale `OPEN`. It must be **idempotent** (fixed UUIDs, upserts): `make up` and
 `make redis-up` always run it, and **every run re-emits** `EventPublished` and
 `SalesRulesConfigured` (new outbox rows even when nothing changed), so Queue rebuilds its
 projection in a freshly created Memorystore (ADR-0001) and Inventory re-applies its upserts
-(tested on Thu Oct 1).
+(tested on Thu Oct 1). Inventory's upsert refreshes only the sector name and price: a re-seed
+does **not** reset capacity or `available` there, so a sector sold out in a rehearsal stays sold
+out until its reservations expire.
+
+| Event | Sale | Sectors (capacity) | Why |
+| ----- | ---- | ------------------ | --- |
+| Festival Estéreo 2026 (`…0001`, the contract example) | `OPEN` until Nov 14 | General (200), VIP (40), Palco (6) | The purchase; Palco makes `SOLD_OUT` easy to show |
+| Concierto Sinfónico de Fin de Año (`…0002`) | `SCHEDULED` (opens Dec 1) | Platea (120), Balcón (60) | A sale that is not open yet |
+| Noche de Jazz (`…0003`) | `OPEN` until Dec 15 | Mesa (10) | E-02 against `dev` (exactly 10 seats; they come back when the test's reservations expire) |
+
+Dates are fixed, not relative to the run, so every run converges to the same rows, and the
+prewarmer skips all three (window over, or more than 30 days ahead): the seed never raises
+min instances. This holds only until **Nov 1, 2026**: from then on the Concierto opens within 30
+days and a seed run schedules its warm-up, and from Nov 14 the Festival is `CLOSED` (the seed DB
+test asserts the sale states, so it fails too). Move the dates forward if the demo outlives
+Delivery 4. E-01 publishes its own event through the API.
+
+It writes everything and the six facts in one transaction, then flushes. If Pub/Sub fails the run
+still succeeds with `event=seed_publish_deferred`, and housekeeping publishes within a minute. All
+six facts carry the run's `correlationId` (logged as `event=seed_applied`). It needs the
+service's env (`DATABASE_URL`, `GCP_PROJECT_ID`, topics); in `dev` it runs as a Cloud Run job
+with the catalog image, because the database URL uses the Cloud SQL socket.
 
 ## Configuration
 

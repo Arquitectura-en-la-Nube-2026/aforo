@@ -100,3 +100,17 @@ test("config: DATABASE_URL and GCP_PROJECT_ID are required; topics default to th
   assert.throws(() => loadCatalogConfig({ DATABASE_URL: "postgres://x" }), /GCP_PROJECT_ID/);
   assert.throws(() => loadCatalogConfig({ DATABASE_URL: "x", GCP_PROJECT_ID: "p", PORT: "0" }), /PORT/);
 });
+
+test("seed data: valid against the contract, unique ids, every event has rules", () => {
+  const { SEED_EVENTS } = require("../dist/seed/seed-data");
+  const ids = [];
+  for (const event of SEED_EVENTS) {
+    const { id, rules, sectors, ...request } = event;
+    parseCreateEvent({ ...request, sectors: sectors.map(({ id: _id, ...sector }) => sector) });
+    parseSalesRules(rules);
+    ids.push(id, ...sectors.map((s) => s.id));
+  }
+  assert.equal(SEED_EVENTS.length, 3);
+  assert.equal(new Set(ids).size, ids.length);
+  for (const id of ids) uuidParam("id", id);
+});

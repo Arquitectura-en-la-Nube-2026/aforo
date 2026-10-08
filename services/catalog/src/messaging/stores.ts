@@ -16,9 +16,9 @@ export async function addToOutbox(
   );
 }
 
-@Injectable()
-export class OutboxRepository implements OutboxStore {
-  constructor(private readonly db: DbService) {}
+/** The outbox table as @aforo/common's OutboxStore. Plain class: the seed uses it without Nest. */
+export class PgOutboxStore implements OutboxStore {
+  constructor(private readonly db: Queryable) {}
 
   async findPending(limit: number): Promise<OutboxMessage[]> {
     const { rows } = await this.db.query<{
@@ -75,9 +75,8 @@ export class IdempotencyKeyRepository implements IdempotencyRepository {
 @Global()
 @Module({
   providers: [
-    OutboxRepository,
     IdempotencyKeyRepository,
-    { provide: OUTBOX_STORE, useExisting: OutboxRepository },
+    { provide: OUTBOX_STORE, inject: [DbService], useFactory: (db: DbService) => new PgOutboxStore(db) },
     { provide: IDEMPOTENCY_REPOSITORY, useExisting: IdempotencyKeyRepository },
   ],
   exports: [OUTBOX_STORE, IDEMPOTENCY_REPOSITORY],
