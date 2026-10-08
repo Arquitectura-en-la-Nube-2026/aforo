@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Put, Query, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Get, Headers, HttpCode, Param, Post, Put, Query, UseInterceptors } from "@nestjs/common";
 import { CurrentUser, IdempotencyInterceptor, type AuthenticatedUser } from "@aforo/common/nest";
 import type { Event } from "./event.view";
 import { EventsService, type EventPage } from "./events.service";
@@ -24,8 +24,13 @@ export class EventsController {
 
   @Post()
   @UseInterceptors(IdempotencyInterceptor)
-  create(@CurrentUser() user: AuthenticatedUser, @Body() body: unknown): Promise<Event> {
-    return this.events.create(parseCreateEvent(body), user.userId);
+  create(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers("idempotency-key") idempotencyKey: string,
+    @Body() body: unknown,
+  ): Promise<Event> {
+    // The interceptor has already rejected a missing or non-UUID key.
+    return this.events.create(parseCreateEvent(body), user.userId, idempotencyKey.trim());
   }
 
   @Put(":eventId/sales-rules")

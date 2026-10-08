@@ -1,11 +1,14 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { randomUUID } from "node:crypto";
-import { DomainError, OutboxPublisher } from "@aforo/common";
+import { createHash } from "node:crypto";
+import { DomainError, OutboxPublisher, StructuredLogger } from "@aforo/common";
 import type { CatalogConfig } from "../config/catalog-config";
 import { CATALOG_CONFIG, DbService } from "../db/db.service";
 import { listEvents, loadEvent, type Event } from "./event.view";
 import { emitFacts } from "./facts";
 import type { ListQuery, NewEvent, SalesRules } from "./validation";
+
+/** Fixed namespace for the ids catalog derives from an Idempotency-Key (UUID v5, RFC 9562). */
+const ID_NAMESPACE = "6f1d2c8e-4b7a-4e0f-9c3d-2a5b8e7f1c40";
 
 export interface EventPage {
   items: Event[];
@@ -21,6 +24,8 @@ export interface EventPage {
  */
 @Injectable()
 export class EventsService {
+  private readonly logger = new StructuredLogger(process.env.K_SERVICE ?? process.env.SERVICE_NAME ?? "catalog");
+
   constructor(
     private readonly db: DbService,
     private readonly publisher: OutboxPublisher,
@@ -38,20 +43,28 @@ export class EventsService {
     return event;
   }
 
-  /** RF-01: a DRAFT with its sectors. Nothing is emitted until it is published. */
-  async create(input: NewEvent, createdBy: string): Promise<Event> {
-    const eventId = randomUUID();
+  /**
+   * RF-01: a DRAFT with its sectors. Nothing is emitted until it is published.
+   *
+   * The ids come from the organizer and the Idempotency-Key, so a retry the idempotency cache did
+   * not catch (a concurrent first call, or a lost save) collides on the primary key and answers the
+   * event the first call created instead of creating a second one.
+   */
+  async create(input: NewEvent, createdBy: string, idempotencyKey: string): Promise<Event> {
+    const eventId = uuidV5(`${createdBy}:${idempotencyKey}`);
     return this.db.tx(async (q) => {
-      await q.query(
+      const inserted = await q.query(
         `INSERT INTO event (id, name, venue, starts_at, sales_opens_at, sales_closes_at, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO NOTHING`,
         [eventId, input.name, input.venue, input.startsAt, input.salesOpensAt, input.salesClosesAt, createdBy],
       );
-      for (const [position, sector] of input.sectors.entries()) {
-        await q.query(
-          `INSERT INTO sector (event_id, id, position, name, capacity, price_cents) VALUES ($1, $2, $3, $4, $5, $6)`,
-          [eventId, randomUUID(), position, sector.name, sector.capacity, sector.priceCents],
-        );
+      if (inserted.rowCount === 1) {
+        for (const [position, sector] of input.sectors.entries()) {
+          await q.query(
+            `INSERT INTO sector (event_id, id, position, name, capacity, price_cents) VALUES ($1, $2, $3, $4, $5, $6)`,
+            [eventId, uuidV5(`${eventId}:${position}`), position, sector.name, sector.capacity, sector.priceCents],
+          );
+        }
       }
       return (await loadEvent(q, eventId)) as Event;
     });
@@ -114,6 +127,20 @@ export class EventsService {
 
   /** Committed already: a failed publish stays in the outbox and housekeeping retries it (ADR-0002). */
   private async flush(): Promise<void> {
-    await this.publisher.flush().catch(() => undefined);
+    await this.publisher.flush().catch((error: unknown) => {
+      // Publish failures are logged by the publisher; this catches the rest (e.g. reading the outbox).
+      this.logger.write("WARNING", "outbox.flush_failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
   }
+}
+
+function uuidV5(name: string): string {
+  const namespace = Buffer.from(ID_NAMESPACE.replaceAll("-", ""), "hex");
+  const bytes = createHash("sha1").update(namespace).update(name, "utf8").digest().subarray(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }

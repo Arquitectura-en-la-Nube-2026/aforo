@@ -81,6 +81,25 @@ dbTest("a repeated Idempotency-Key returns the same status and body; another bod
   assert.equal(conflict.json().code, "IDEMPOTENCY_CONFLICT");
 });
 
+dbTest("a retry the idempotency cache misses still creates one event (concurrent, or the key row lost)", async () => {
+  const key = randomUUID();
+  const body = h.newEvent({ name: "Raced" });
+  const [a, b] = await Promise.all([
+    h.organizer(inject, "POST", "/api/v1/events", body, { key }),
+    h.organizer(inject, "POST", "/api/v1/events", body, { key }),
+  ]);
+  assert.equal(a.statusCode, 201, a.body);
+  assert.equal(b.statusCode, 201, b.body);
+  assert.deepEqual(b.json(), a.json());
+
+  await h.sql("DELETE FROM idempotency_key WHERE key = $1", [key]);
+  const retry = await h.organizer(inject, "POST", "/api/v1/events", body, { key });
+  assert.equal(retry.statusCode, 201, retry.body);
+  assert.deepEqual(retry.json(), a.json());
+  assert.deepEqual(await h.sql("SELECT count(*)::int AS n FROM event WHERE name = 'Raced'"), [{ n: 1 }]);
+  assert.deepEqual(await h.sql("SELECT count(*)::int AS n FROM sector WHERE event_id = $1", [a.json().id]), [{ n: 2 }]);
+});
+
 dbTest("changes need X-User-Id (401) and an Idempotency-Key (422); bad bodies are 422 or 400", async () => {
   const noUser = await inject({
     method: "POST",
