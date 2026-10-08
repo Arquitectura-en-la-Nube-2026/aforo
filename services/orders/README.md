@@ -38,7 +38,7 @@ Orchestrates the saga and owns the order. Talks to the payment gateway — today
 - `APPROVED` → `confirm` on Inventory:
   - `CONFIRMED` → order `PAID` + `OrderPaid` in the outbox, same transaction.
   - `EXPIRED` → order `REFUND_PENDING` + refund on the gateway with an idempotency key
-    (`refund-<paymentId>`), requested after the commit in the same request. If that call fails,
+    (a UUID derived from the payment id, so retries reuse it), requested after the commit in the same request. If that call fails,
     housekeeping retries it for `REFUND_PENDING` orders without a refund id. The reservation is
     **not** reactivated. Implemented even though the happy path doesn't use it: it's the race
     that justifies the saga.

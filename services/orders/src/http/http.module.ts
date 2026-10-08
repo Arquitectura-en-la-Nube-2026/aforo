@@ -19,7 +19,11 @@ export const JSON_HTTP = Symbol('JSON_HTTP');
 @Global()
 @Module({
   providers: [
-    ServiceAuthClient,
+    {
+      provide: ServiceAuthClient,
+      inject: [APP_CONFIG],
+      useFactory: (c: AppConfig) => new ServiceAuthClient({ mode: c.authMode }),
+    },
     {
       provide: JSON_HTTP,
       inject: [APP_CONFIG],

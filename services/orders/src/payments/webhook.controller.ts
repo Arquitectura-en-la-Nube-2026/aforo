@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, Post, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, HttpCode, Logger, Post, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { DomainError, getCorrelationId } from '../common';
@@ -8,6 +8,8 @@ import { WebhookSignatureGuard } from './webhook-signature';
 
 @Controller('api/v1/payments')
 export class WebhookController {
+  private readonly logger = new Logger(WebhookController.name);
+
   constructor(private readonly service: WebhookService) {}
 
   @Post('webhook')
@@ -19,6 +21,14 @@ export class WebhookController {
       await this.service.handle(body, correlationId);
     } catch (err) {
       if (err instanceof DomainError && err.code === 'NOT_FOUND') throw err;
+      this.logger.error({
+        event: 'webhook_failed',
+        notificationId: body.notificationId,
+        paymentId: body.paymentId,
+        code: err instanceof DomainError ? err.code : undefined,
+        reason: (err as Error).message,
+        stack: (err as Error).stack,
+      });
       // Any other failure must be non-2xx so the sender (Cloud Tasks) retries the notification.
       res.status(503).type('application/problem+json');
       return {

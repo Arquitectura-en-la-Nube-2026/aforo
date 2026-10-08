@@ -68,7 +68,7 @@ No NestJS, one entry point (`src/index.ts`, `@google-cloud/functions-framework`)
   4. One transaction: `inbox` row + payment/order transition + `outbox` row (`OrderPaid`);
      commit, `OutboxPublisher.flush()`, `200`.
   5. Any failure -> `503` so Cloud Tasks retries. `confirm -> EXPIRED` sends the order to
-     `REFUND_PENDING` and requests `refund-<paymentId>`; housekeeping retries failed refunds.
+     `REFUND_PENDING` and requests a refund keyed by a UUID derived from the payment id; housekeeping retries failed refunds.
 - `ReservationExpired` push (`PENDING_PAYMENT -> EXPIRED`, deduped by `messageId`) and
   `RefundSweep` for `POST /internal/v1/housekeeping`.
 
