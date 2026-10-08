@@ -52,6 +52,8 @@ redisTest("join returns the QueueStatus of the contract, keeps the place on re-j
   const eventId = await seedEvent(state.app);
   const [a, b, c] = users(3);
 
+  // Equal scores tie-break on the member (a random UUID), so joins in the same millisecond would
+  // rank at random. A 2 ms gap between joins keeps arrival order deterministic.
   const first = await join(state.app, eventId, a);
   assert.equal(first.statusCode, 201);
   assert.deepEqual(Object.keys(first.json()).sort(), ["aheadOf", "estimatedWaitSeconds", "eventId", "passExpiresAt", "passToken", "position", "state"]);
@@ -65,7 +67,9 @@ redisTest("join returns the QueueStatus of the contract, keeps the place on re-j
     passExpiresAt: null,
   });
 
+  await sleep(2);
   assert.equal((await join(state.app, eventId, b)).json().position, 2);
+  await sleep(2);
   const third = (await join(state.app, eventId, c)).json();
   assert.equal(third.position, 3);
   assert.equal(third.aheadOf, 2);
