@@ -184,6 +184,39 @@ test("the webhook needs no session and reaches Orders byte for byte with its sig
   assert.equal(rejected.json().code, "INVALID_SIGNATURE");
 });
 
+test("a handled webhook's bare 200 (no body, no Content-Type) passes through, never as a 500", async () => {
+  orders.respond = (request, response) => {
+    request.resume();
+    request.on("end", () => {
+      response.writeHead(200);
+      response.end();
+    });
+  };
+  const handled = await inject({
+    method: "POST",
+    url: "/api/v1/payments/webhook",
+    payload: "{}",
+    headers: { "content-type": "application/json", "x-signature": "sha256=00" },
+  });
+  assert.equal(handled.statusCode, 200);
+  assert.equal(handled.body, "");
+
+  orders.respond = (request, response) => {
+    request.resume();
+    request.on("end", () => {
+      response.writeHead(200);
+      response.end("<html>not Orders</html>");
+    });
+  };
+  const foreign = await inject({
+    method: "POST",
+    url: "/api/v1/payments/webhook",
+    payload: "{}",
+    headers: { "content-type": "application/json", "x-signature": "sha256=00" },
+  });
+  assert.equal(foreign.statusCode, 500, "a typeless body did not come from Orders");
+});
+
 test("availability is public and goes to Inventory, never with identity headers", async () => {
   const response = await inject({
     method: "GET",
