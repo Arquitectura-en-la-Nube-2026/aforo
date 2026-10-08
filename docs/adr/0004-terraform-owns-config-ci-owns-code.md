@@ -1,6 +1,6 @@
 # 0004 · Terraform owns configuration, CI owns code and traffic
 
-- **Status:** Accepted
+- **Status:** Accepted · amended 2026-10-03 by D-21 (pre-warmer owns two minimums)
 - **Date:** 2026-09-26
 - **Deciders:** Julián (Platform)
 - **Affects:** `infra/`, `.github/workflows/`, `Makefile`, `functions/*`, runbooks
@@ -22,13 +22,16 @@ Terraform, which contradicts "nothing outside IaC".
 | Every resource, env vars, secrets, scaling, probes, IAM, VPC | Terraform | `make apply` |
 | Container image of services and web | CI | `gcloud run deploy --image <repo>@<digest> --no-traffic --tag sha-<short>` |
 | Traffic split of services and web | CI | smoke on the tag URL, then `gcloud run services update-traffic --to-latest` |
-| Source of functions | CI | `gcloud functions deploy <fn> --source gs://aforo-dev-functions/<fn>/<sha>.zip` (source flag only, never env flags) |
+| Source of functions | CI | `gcloud functions deploy <fn> --source gs://aforo-dev-teamf-functions/<fn>/<sha>.zip` (source flag only, never env flags) |
 | Runtime switches (`env_on`, `redis_enabled`, `mock_fault_mode`) | Terraform variables | only through `make up/down/redis-up/redis-down/fault` |
+| Service-level minimum instances of `gateway` and `queue` | `functions/prewarmer` (D-21) | Cloud Run Admin API, `scaling.minInstanceCount`, warm before each sales window and back to 0 after |
 
 - Cloud Run services in Terraform declare
   `lifecycle { ignore_changes = [template[0].containers[0].image, traffic, client, client_version] }`
   and are first created with a public placeholder image. Functions ignore
   `build_config[0].source` and are first created from a placeholder archive.
+  `gateway` and `queue` also ignore `scaling[0].min_instance_count` (service level), which the
+  pre-warmer changes; Terraform creates it at 0. This is the only configuration a function owns.
 - CI promotes with `--to-latest` (the revision it just deployed is the latest), so traffic
   keeps following the latest revision and a later Terraform config change goes live too.
   Rollback: `update-traffic --to-revisions <previous>=100`; the next deploy unpins it.
@@ -61,5 +64,5 @@ Terraform, which contradicts "nothing outside IaC".
   revision) instead of seconds. Acceptable: during the demo, narrate while it applies.
 - Config changes applied by Terraform go live all-at-once, not blue/green. Only code rollouts
   are blue/green. That is deliberate: the artifact is the image, config is environment.
-- Functions have no pre-traffic smoke test. Accepted: they are the mock and the DLQ monitor,
-  and rollback is one command.
+- Functions have no pre-traffic smoke test. Accepted: they are small and rarely changed (the
+  pre-warmer, the DLQ monitor and the payment mock), and rollback is one command.

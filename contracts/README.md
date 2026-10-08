@@ -10,7 +10,8 @@ Single source of truth for how units talk to each other. **Code must match these
 | [openapi/queue.yaml](openapi/queue.yaml) | Join, status, SSE stream |
 | [openapi/orders.yaml](openapi/orders.yaml) | Orders, payment intents, webhook |
 | [openapi/inventory.yaml](openapi/inventory.yaml) | Public availability + internal reservation API |
-| [openapi/mock-payment-gateway.yaml](openapi/mock-payment-gateway.yaml) | FaaS stand-in for the external payment gateway (D-16) |
+| [openapi/mock-payment-gateway.yaml](openapi/mock-payment-gateway.yaml) | Function standing in for the external payment gateway (D-16, a test double) |
+| [openapi/prewarmer.yaml](openapi/prewarmer.yaml) | FaaS that pre-warms the entry path before each sales window (D-21) |
 | [openapi/components/common.yaml](openapi/components/common.yaml) | Shared schemas, headers, responses |
 | [events/](events/) | Bus topics, envelope and payload JSON Schemas |
 
@@ -37,7 +38,8 @@ hand-writing them.
    as `notificationId`.
 5. `POST /queue/{eventId}/join` is naturally idempotent per user (re-join returns the same
    position), so `Idempotency-Key` is optional there.
-6. Confirm D-16/D-17 (two FaaS components) and the `PAYMENT_UNAVAILABLE` code.
+6. The FaaS components are the pre-warmer and the DLQ monitor (D-21); confirm the `PAYMENT_UNAVAILABLE` code.
+   New: `prewarmer.yaml` and the `prewarmer-event-published` subscription.
 7. Review the changes from ADR-0002…0005 (all compatible, drafted on Sept 26):
    `POST /internal/v1/housekeeping` on catalog, inventory and orders; the
    `Idempotent-Replayed` response header (R-06); `422` vs `400` (R-07); the webhook processed

@@ -8,9 +8,9 @@ file and announce it in the team channel.
 | ID   | Decision | Consequence |
 | ---- | -------- | ----------- |
 | D-01 | TypeScript with NestJS on **Node 24 (LTS)** in all five services | `packages/common` serves everyone without duplication. Node 24 required by current Prism; supported by Angular 20 and NestJS 11 |
-| D-02 | Angular 20 with SSR on public routes | The frontend deploys as its own container |
+| D-02 | ~~Angular 20 with SSR on public routes~~ — **superseded by [ADR-0007](../adr/0007-web-framework-next.md)**: Next.js with SSR on public routes | The frontend deploys as its own container |
 | D-03 | Single monorepo with CI per affected folder | One branch per person, `main` always deployable |
-| D-04 | One GCP project, `aforo-dev`, in `southamerica-east1`, on Julián's student account | Julián creates the project and grants access; nobody else can unblock it |
+| D-04 | One GCP project, `aforo-dev-teamf` (the ID `aforo-dev` was taken globally), in `southamerica-east1`, billed to Julián's account | Julián creates the project and grants access; nobody else can unblock it |
 | D-05 | One Cloud SQL instance with one database and one user per service | Turned off when nobody is working |
 | D-06 | Simulated login issued by the Gateway; Identity Platform only if there is slack | The token keeps the shape of an OIDC JWT so switching is configuration |
 | D-07 | Orders and Inventory do **not** verify the queue pass | No JWKS, no ES256 signature, no key in Secret Manager. Re-evaluate: see [delivery-4.md](delivery-4.md) |
@@ -33,8 +33,9 @@ deliberate deployment strategy, and state machines honored in code.
 
 | ID   | Decision | Why |
 | ---- | -------- | --- |
-| D-16 | The **mock payment gateway is a FaaS component** (`functions/mock-payment-gateway`, Cloud Run functions), outside Orders. Orders reaches it through its payment adapter (Anti-Corruption Layer). The 2 s delayed webhook goes through a Cloud Tasks queue `payment-webhooks` | FaaS #1. It stands in for an external system, so moving it out of Orders makes the ACL and the circuit breaker real |
-| D-17 | A **DLQ monitor is a FaaS component** (`functions/dlq-monitor`), triggered by the five DLQ topics; it emits a structured ERROR log that feeds a log-based alert | FaaS #2 with no new functional scope. Realizes the E-05 "DLQ with messages → alert" tactic |
+| D-16 | *(amended by D-21: still a function, not counted as a FaaS component)* The **mock payment gateway is a FaaS component** (`functions/mock-payment-gateway`, Cloud Run functions), outside Orders. Orders reaches it through its payment adapter (Anti-Corruption Layer). The 2 s delayed webhook goes through a Cloud Tasks queue `payment-webhooks` | FaaS #1. It stands in for an external system, so moving it out of Orders makes the ACL and the circuit breaker real |
+| D-17 | A **DLQ monitor is a FaaS component** (`functions/dlq-monitor`), triggered by the DLQ topics (six with D-21); it emits a structured ERROR log that feeds a log-based alert | FaaS #2 with no new functional scope. Realizes the E-05 "DLQ with messages → alert" tactic |
+| D-21 | **The FaaS components are the pre-warmer and the DLQ monitor.** `functions/prewarmer` sets minimum instances on `gateway` and `queue` before each sales window and reverts them after (E-01). The payment mock stays a function but is not counted (amends D-16) | Professor: FaaS required, but not added only to comply. Both functions realize designed tactics (E-01, E-05); no microservice is converted |
 | D-18 | Orders' payment adapter implements **timeouts + circuit breaker + retry with backoff and jitter**; the mock supports **fault injection** (`FAULT_MODE`) | Gives the live, demonstrable resilience tactic (E-06). Circuit breaker is a Delivery 2 pattern and must be visible in code |
 | D-19 | **Immutable artifacts + blue/green on Cloud Run**: images tagged with the git SHA and deployed by digest; new revision deployed with `--no-traffic` and a tag, smoke-tested, then 100 % traffic; rollback = shift back. DB migrations follow expand/contract and run as a Cloud Run job before the traffic shift | Required by the guide. Details: [../architecture/build-and-deploy.md](../architecture/build-and-deploy.md) |
 | D-20 | The Inventory concurrency test is **no longer cuttable** | It is the running evidence of E-02 (zero overselling) |

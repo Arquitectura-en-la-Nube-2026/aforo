@@ -1,7 +1,11 @@
-# mock-payment-gateway — FaaS #1 (HTTP)
+# mock-payment-gateway — function standing in for the payment gateway (HTTP)
 
 > Owner: Daniel Felipe (with Orders) · Contract: [contracts/openapi/mock-payment-gateway.yaml](../../contracts/openapi/mock-payment-gateway.yaml)
-> Decision: D-16 (replaces D-09) · Status: implemented (storage: Firestore, decided)
+> Decision: D-16 (replaces D-09), amended by D-21 · Status: implemented (storage: Firestore, decided)
+>
+> Built as a Cloud Run function and following the same FaaS rules, but it is a **test double for
+> an external system**, so it is not presented as one of Aforo's FaaS components (those are
+> `prewarmer` and `dlq-monitor`, D-21).
 
 Stands in for the external payment gateway (Wompi in the target design). It lives **outside**
 Orders so that Orders' payment adapter is a real Anti-Corruption Layer and its circuit breaker

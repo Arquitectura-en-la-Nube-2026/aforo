@@ -6,8 +6,8 @@ Guidance for Claude Code (and humans) working in this repository.
 
 Aforo is a ticketing platform. This repo is the **Delivery 4 prototype of one purchase happy
 path** (login → catalog → waiting room → reserve → mock payment → paid order), deployed on GCP
-(`aforo-dev`, `southamerica-east1`). Five NestJS services and one Angular SSR app on Cloud Run,
-two FaaS components (Cloud Run functions), Pub/Sub, Cloud Tasks, Cloud Scheduler, Cloud SQL, and
+(`aforo-dev-teamf`, `southamerica-east1`). Five NestJS services and one Next.js SSR app on Cloud Run,
+two FaaS components (Cloud Run functions: `prewarmer`, `dlq-monitor`, D-21), Pub/Sub, Cloud Tasks, Cloud Scheduler, Cloud SQL, and
 Memorystore for Redis created only for live tests and demos (ADR-0001).
 Node 24. Deadline: **Mon Oct 12, 2026**. Requirement-by-requirement map: `docs/plan/delivery-4.md`.
 
@@ -82,5 +82,6 @@ the same script names).
 - The queue pass (`X-Queue-Pass`) is forwarded and logged but **never verified** downstream (D-07).
 - Login is simulated by the Gateway (HS256 JWT, no password) (D-06).
 - No Edge/CDN/WAF/CAPTCHA, no ticket issuance, no notifications in this slice.
-- The payment gateway is a mock (a FaaS component) with deliberate fault injection.
+- The payment gateway is a mock (a Cloud Run function, but a test double, not one of the FaaS
+  components) with deliberate fault injection.
 - `OrderPaid` is published but nobody consumes it.

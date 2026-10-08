@@ -25,6 +25,7 @@
 /services/orders/                   @luleonr @JuanjMedina
 /functions/mock-payment-gateway/    @luleonr @JuanjMedina
 /functions/dlq-monitor/             @djguzmanc @JuanjMedina
+/functions/prewarmer/               @djguzmanc @CristianMontane
 
 /infra/                             @djguzmanc @JuanjMedina
 /.github/                           @djguzmanc @JuanjMedina

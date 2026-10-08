@@ -15,7 +15,8 @@ paths:
   Cloud Run services declare
   `lifecycle { ignore_changes = [template[0].containers[0].image, traffic, client, client_version] }`
   and are created with a placeholder image; functions ignore `build_config[0].source` and are
-  created from a placeholder archive.
+  created from a placeholder archive. `gateway` and `queue` also ignore the service-level
+  `scaling[0].min_instance_count`: the pre-warmer function owns it (D-21).
 - **Runtime switches** `env_on`, `redis_enabled`, `mock_fault_mode` are Terraform variables,
   exposed back as outputs `switch_env_on`, `switch_redis_enabled`, `switch_mock_fault_mode`.
   Apply only through `make apply | up | down | redis-up | redis-down | fault`, which read the
@@ -23,7 +24,7 @@ paths:
 - **Wiring through references, never copied URLs**: env vars that point to another resource take
   its Terraform attribute (e.g. `PAYMENT_GATEWAY_URL =
   google_cloudfunctions2_function.mock_payment_gateway.service_config[0].uri`).
-- Project `aforo-dev`, region `southamerica-east1`. Region and project are variables, never
+- Project `aforo-dev-teamf`, region `southamerica-east1`. Region and project are variables, never
   hard-coded in modules.
 - Resource names: `aforo-<service>` for Cloud Run, topics `aforo.<producer>.<fact>`,
   subscriptions `<consumer>-<fact>`, DLQs `<subscription>-dlq`. Match `contracts/events/README.md`.
@@ -36,10 +37,11 @@ paths:
   (ADR-0002).
 - Startup and liveness probes call `/health/live`, never `/health/ready` (ADR-0004).
 - Sizing follows the connection budget in ADR-0005: `max_instance_count` per service and
-  `DB_POOL_MAX` env var together; `orders` max 1 instance; everything `min_instance_count = 0`.
-- Memorystore (queue) exists only when `redis_enabled = true`, together with the queue's push
-  subscriptions and their DLQs; `queue` reaches it through Direct VPC egress on `aforo-vpc`
-  (`PRIVATE_RANGES_ONLY`) (ADR-0001).
+  `DB_POOL_MAX` env var together; `orders` max 1 instance; everything `min_instance_count = 0`
+  (the pre-warmer raises `gateway` and `queue` during sales windows, D-21).
+- Memorystore (queue, gateway quota) exists only when `redis_enabled = true`, together with the
+  queue's push subscriptions and their DLQs; `queue` and `gateway` reach it through Direct VPC
+  egress on `aforo-vpc` (`PRIVATE_RANGES_ONLY`) (ADR-0001).
 - Cloud Scheduler: one job per Postgres service calling `POST /internal/v1/housekeeping` every
   minute with OIDC; `paused = !var.env_on` (ADR-0002).
 - Pub/Sub push subscriptions: OIDC push auth, `retry_policy` 10 s → 60 s,

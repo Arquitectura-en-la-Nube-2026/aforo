@@ -18,6 +18,7 @@ service-account*.json
 *.tfstate
 *.tfstate.*
 crash.log
+tfplan
 *.tfvars.local
 
 # OS / editors

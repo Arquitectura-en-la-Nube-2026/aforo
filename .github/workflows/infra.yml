@@ -1,0 +1,47 @@
+name: infra
+
+# PR: fmt, validate and plan against the real state. There is no apply in CI: after merging,
+# the Platform owner runs `make apply` from main and confirms the plan by hand.
+
+on:
+  pull_request:
+    paths: ["infra/**", "Makefile", ".github/workflows/infra.yml"]
+
+# One Terraform run at a time; never cancel one halfway through.
+concurrency:
+  group: terraform-dev
+  cancel-in-progress: false
+
+env:
+  WIF_PROVIDER: projects/68220265740/locations/global/workloadIdentityPools/github/providers/aforo-repo
+  WIF_SERVICE_ACCOUNT: github-ci@aforo-dev-teamf.iam.gserviceaccount.com
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
+      - run: terraform -chdir=infra fmt -check -recursive
+      - run: make tf-init
+      - run: terraform -chdir=infra/envs/dev validate
+      - run: make plan TF_PLAN_FLAGS=-out=tfplan
+      - name: Plan summary
+        run: |
+          terraform -chdir=infra/envs/dev show -no-color tfplan > plan.txt
+          { echo '```'; cat plan.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: terraform-plan
+          path: plan.txt
+

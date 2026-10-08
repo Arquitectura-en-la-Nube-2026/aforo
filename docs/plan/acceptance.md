@@ -51,7 +51,10 @@ Run end to end on `dev` and recorded:
   exactly 10 reservations, 190 `SOLD_OUT`) runs against `dev`.
 - **Observability (E-05):** `make poison` sends a malformed message; it lands in the DLQ and
   `dlq-monitor` logs it and raises the alert within 5 minutes.
-- **FaaS:** both functions deployed and exercised by the steps above.
+- **Elasticity (E-01) / FaaS:** publish an event that opens in 3 minutes and closes in 8; the
+  `prewarmer` raises `gateway` and `queue` to 1 minimum instance right away and returns them to 0
+  at the close (visible in Cloud Run and in `event=prewarm_applied` logs).
+- **FaaS:** `prewarmer` and `dlq-monitor` deployed and exercised by the steps above (D-21).
 - **Deployment strategy:** a new revision is deployed with no traffic, smoke-tested on its tag URL
   and then promoted; a rollback is shown.
 

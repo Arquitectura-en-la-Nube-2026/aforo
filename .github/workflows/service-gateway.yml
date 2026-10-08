@@ -1,0 +1,18 @@
+name: service-gateway
+
+on:
+  pull_request:
+    paths: ["services/gateway/**", "packages/common/**", ".github/workflows/_service.yml", ".github/workflows/service-gateway.yml"]
+  push:
+    branches: [main]
+    paths: ["services/gateway/**", "packages/common/**", ".github/workflows/_service.yml", ".github/workflows/service-gateway.yml"]
+  workflow_dispatch:
+
+jobs:
+  service:
+    uses: ./.github/workflows/_service.yml
+    with:
+      service: gateway
+    permissions:
+      contents: read
+      id-token: write

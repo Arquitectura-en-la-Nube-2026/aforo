@@ -1,6 +1,6 @@
 # infra — Terraform
 
-> Owner: Julián · Status: not started
+> Owner: Julián · Status: in progress (bootstrap done; foundation: Artifact Registry, functions bucket, team access)
 
 Everything in GCP is declared here (RT-04). Nothing is created by hand in the console, and no
 `gcloud` command changes a resource Terraform owns. That is also what makes turning the
@@ -8,7 +8,7 @@ environment off and on possible.
 
 ## Prerequisites (done by Julián before Mon Sept 28, the only manual step)
 
-Project `aforo-dev` with billing, six accounts with editor role, APIs enabled (Cloud Run,
+Project `aforo-dev-teamf` (`aforo-dev` was taken globally) with billing, six accounts with editor role, APIs enabled (Cloud Run,
 Cloud SQL, Pub/Sub, Cloud Tasks, Cloud Scheduler, Secret Manager, Artifact Registry,
 IAM Credentials, Cloud Functions, Cloud Build, Eventarc, Memorystore for Redis, Compute Engine
 (VPC), Monitoring), a GCS bucket for Terraform state, and Workload Identity Federation for
@@ -37,11 +37,12 @@ infra/
 | Cloud Run | 6 services: web, gateway, catalog, queue, orders, inventory | Nothing (scale to zero) |
 | Cloud SQL PostgreSQL | 1 `db-f1-micro` instance, 3 databases (`catalog`, `orders`, `inventory`) | Disk only, when `env_on = false` |
 | Memorystore for Redis | Basic 1 GB, **only while `redis_enabled = true`** (ADR-0001) | Nothing: it doesn't exist. ≈ US$1–2/day while on |
-| VPC | `aforo-vpc` + one subnet in the region, Direct VPC egress for `queue` only | Nothing |
-| Pub/Sub | 4 topics, 5 push subscriptions, 5 DLQs (the 2 `queue-*` subscriptions + DLQs only with Redis on) | Negligible |
-| Cloud Tasks | 2 queues: `reservation-expiry`, `payment-webhooks` | Negligible |
+| VPC | `aforo-vpc` + one subnet in the region, Direct VPC egress for `queue` and `gateway` | Nothing |
+| Pub/Sub | 4 topics, 6 push subscriptions, 6 DLQs (the 2 `queue-*` subscriptions + DLQs only with Redis on) | Negligible |
+| Cloud Tasks | 3 queues: `reservation-expiry`, `payment-webhooks`, `prewarm-windows` | Negligible |
 | Cloud Scheduler | 3 jobs → `POST /internal/v1/housekeeping` on catalog, inventory, orders every minute; paused when `env_on = false` (ADR-0002) | Free tier (3 jobs) |
-| Cloud Run functions | 2: `mock-payment-gateway` (HTTP), `dlq-monitor` (Pub/Sub trigger via Eventarc) | Nothing (scale to zero) |
+| Cloud Run functions | 3: `prewarmer` (Pub/Sub push + Cloud Tasks, D-21), `dlq-monitor` (Pub/Sub trigger via Eventarc), `mock-payment-gateway` (HTTP, test double) | Nothing (scale to zero). While a window is warm, `gateway` and `queue` keep 1 instance (≤ `PREWARM_HOLD_SECONDS`, 1 h) |
+| Firestore (Native) | `(default)` database, collection `payments` of `mock-payment-gateway` only | Free tier (storage of a few test documents) |
 | Cloud Monitoring | log-based metric + alert policy for dead letters | Free tier |
 | Cloud Storage | bucket for function sources (versioned) | Cents |
 | Secret Manager | login secret, webhook HMAC secret, DB passwords | Cents |
@@ -70,6 +71,8 @@ Never run `terraform apply` by hand: it would reset every switch to its default.
 - Cloud Run services: created with a placeholder image;
   `lifecycle { ignore_changes = [template[0].containers[0].image, traffic, client, client_version] }`.
 - Functions: created from a placeholder archive; `ignore_changes = [build_config[0].source]`.
+- `gateway` and `queue`: also `ignore_changes` on the service-level `scaling[0].min_instance_count`
+  (created at 0): the pre-warmer owns it (D-21).
 - Probes: startup and liveness on `/health/live`, never `/health/ready`, so a service with its DB
   or Redis off still deploys and boots.
 - Cross-resource values come from references, never copied URLs:
@@ -81,6 +84,18 @@ Never run `terraform apply` by hand: it would reset every switch to its default.
   | `SELF_URL` | inventory, mock | deterministic Cloud Run URL `https://<name>-<project-number>.<region>.run.app` built from variables (a resource can't reference its own `uri`) |
   | `ORDERS_WEBHOOK_URL` | mock | gateway `uri` + `/api/v1/payments/webhook` |
   | `REDIS_URL` | queue | `redis://${host}:${port}` of Memorystore, `""` when off |
+
+## Cloud SQL
+
+One instance `aforo-pg` (Postgres 17, `db-f1-micro`, 10 GB HDD, no backups) with a database and a
+user per service. Each service gets its `DATABASE_URL` from Secret Manager
+(`aforo-<service>-database-url`) and reaches the instance through the Cloud SQL connector socket
+mounted at `/cloudsql`; there are no authorized networks. To connect from a laptop, use the
+[Cloud SQL Auth Proxy](https://cloud.google.com/sql/docs/postgres/sql-proxy) with
+`aforo-dev-teamf:southamerica-east1:aforo-pg` and `DB_POOL_MAX=1`.
+
+Databases and users can only be created while the instance runs, so the first apply that adds
+them is `make up`, not `make apply`.
 
 ## Sizing and connection budget (ADR-0005)
 
@@ -97,10 +112,10 @@ together.
 | gateway | 3 | 80 | request-based | — | — |
 | web | 2 | 80 | request-based | — | — |
 | queue | 2 | 250 | **always allocated** (SSE + admission timer) | — | — |
-| functions | 5 | 1 (default) | — | — | — |
+| functions | 5 (`prewarmer`: 1) | 1 (default) | — | — | — |
 | **Total DB connections** | | | | | **19 of 22** |
 
-All `min_instance_count = 0`.
+All `min_instance_count = 0`; during a sales window the pre-warmer raises `gateway` and `queue` to 1 (D-21).
 
 ## Pub/Sub settings (ADR-0005)
 
@@ -114,7 +129,9 @@ Push subscriptions with OIDC auth, `ack_deadline_seconds = 60`, `retry_policy` 1
 One runtime service account per Cloud Run service with least privilege (e.g. only `orders` may
 invoke `inventory`; only the Pub/Sub push SA may invoke `/internal/v1/events/*`; only the Cloud
 Tasks SA may invoke `inventory`'s `/expire` and the mock's `/webhook-dispatch`; only the
-Cloud Scheduler SA may invoke `/internal/v1/housekeeping`).
+Cloud Scheduler SA may invoke `/internal/v1/housekeeping`). The pre-warmer's SA has
+`roles/run.developer` only on `aforo-gateway` and `aforo-queue`, `roles/iam.serviceAccountUser`
+on their runtime SAs, and enqueue/list rights on `prewarm-windows`.
 
 ## Deployment
 

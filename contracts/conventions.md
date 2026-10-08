@@ -67,6 +67,7 @@ Always `application/problem+json`, never plain text:
 | `RESERVATION_EXPIRED` | 409 | Inventory, Orders |
 | `IDEMPOTENCY_CONFLICT` | 409 | any |
 | `VALIDATION_ERROR` | 422 | any |
+| `MALFORMED_REQUEST` | 400 | any (unparseable JSON body) |
 | `NOT_FOUND` *(R-04)* | 404 | any |
 | `INVALID_SIGNATURE` *(R-04)* | 401 | Orders (webhook) |
 | `RATE_LIMITED` *(R-04)* | 429 | Gateway (with `Retry-After`) |

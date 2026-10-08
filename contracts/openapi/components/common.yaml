@@ -84,6 +84,7 @@ components:
         - RESERVATION_EXPIRED
         - IDEMPOTENCY_CONFLICT
         - VALIDATION_ERROR
+        - MALFORMED_REQUEST
         - NOT_FOUND
         - INVALID_SIGNATURE
         - PAYMENT_UNAVAILABLE
@@ -167,6 +168,11 @@ components:
           schema: { $ref: "#/components/schemas/Problem" }
     ValidationError:
       description: Request does not match the schema.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+    MalformedRequest:
+      description: Request body is not valid JSON.
       content:
         application/problem+json:
           schema: { $ref: "#/components/schemas/Problem" }

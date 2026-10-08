@@ -5,8 +5,9 @@ paths:
 
 # FaaS rules (Cloud Run functions, Node 24, TypeScript)
 
-Functions are the two FaaS components required by Delivery 4 (D-16, D-17). They follow FaaS
-principles, so they are **not** NestJS apps.
+Aforo's FaaS components are `prewarmer` (E-01) and `dlq-monitor` (E-05) (D-21). The payment mock
+is also a function and follows the same rules, but it is a test double, not a component of the
+system. They follow FaaS principles, so they are **not** NestJS apps.
 
 ## Must
 - One entry point per function, built on `@google-cloud/functions-framework`. HTTP or CloudEvent

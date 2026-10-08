@@ -19,8 +19,9 @@ Nothing enters scope unless it appears in the acceptance script ([acceptance.md]
 | Inventory & reservations          | Yes      | Reserve, confirm, release, expire                                     |
 | Event bus                         | Yes      | Pub/Sub, 4 topics, push subscriptions with DLQ                        |
 | Expiry queue                      | Yes      | Cloud Tasks with delayed delivery + one-minute sweep (ADR-0003)       |
-| Payment gateway (mock)            | Yes      | FaaS component outside Orders, with fault injection (D-16)            |
-| DLQ monitor                       | Yes      | FaaS component, alert on dead letters (D-17)                          |
+| Payment gateway (mock)            | Yes      | Cloud Run function outside Orders (test double), with fault injection (D-16) |
+| DLQ monitor                       | Yes      | FaaS component, alert on dead letters (D-17, E-05)                    |
+| Pre-warmer                        | Yes      | FaaS component, warms gateway and queue before each window (D-21, E-01) |
 | Managed identity                  | No       | Simulated login in the Gateway; Identity Platform only if time allows |
 | Pass verification in Orders/Inventory | No   | The queue orders and admits, but nobody validates the pass downstream |
 | Managed edge, CDN, WAF, CAPTCHA   | No       | The browser talks directly to the Gateway                             |
@@ -53,9 +54,9 @@ alert (E-05). See [delivery-4.md](delivery-4.md).
 
 Kept because they cost only configuration: aggregate concurrency limit (instance caps × DB
 pools, E-02, ADR-0005) and the in-memory store created per window by IaC (E-07, ADR-0001).
+Kept as a FaaS component: pre-warming per sales window (E-01, D-21).
 
-Dropped because they are only verifiable under load, not in a functional demo: pre-warming,
-multi-zone replica, window-sized DB profile, error-rate alerts, load tests.
+Dropped because they are only verifiable under load, not in a functional demo: multi-zone replica, window-sized DB profile, error-rate alerts, load tests.
 
 ## Relation to the target architecture
 

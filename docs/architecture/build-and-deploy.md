@@ -6,8 +6,8 @@
 
 | Unit | Artifact | Identity |
 | ---- | -------- | -------- |
-| Services + web | OCI image in Artifact Registry `southamerica-east1-docker.pkg.dev/aforo-dev/aforo/<unit>` | Tag = full git SHA; deployed **by digest** (`@sha256:…`). No `latest`, no re-tagging |
-| Functions | Source archive `gs://aforo-dev-functions/<function>/<git-sha>.zip` (Cloud Build turns it into an image) | Object name = git SHA; bucket with versioning, objects never overwritten |
+| Services + web | OCI image in Artifact Registry `southamerica-east1-docker.pkg.dev/aforo-dev-teamf/aforo/<unit>` | Tag = full git SHA; deployed **by digest** (`@sha256:…`). No `latest`, no re-tagging |
+| Functions | Source archive `gs://aforo-dev-teamf-functions/<function>/<git-sha>.zip` (Cloud Build turns it into an image) | Object name = git SHA; bucket with versioning, objects never overwritten |
 | Infra | Terraform plan artifact attached to the PR | Applied from `main` only |
 
 The same artifact is promoted; nothing is rebuilt between test and release. Config comes from
@@ -40,16 +40,16 @@ blue/green is the default.
 
 ## Functions: all-at-once with instant rollback
 
-Cloud Run functions don't take `--no-traffic`, so the two functions deploy all-at-once:
+Cloud Run functions don't take `--no-traffic`, so the three functions deploy all-at-once:
 
 ```
-1. upload gs://aforo-dev-functions/<fn>/<git-sha>.zip
-2. gcloud functions deploy <fn> --source gs://aforo-dev-functions/<fn>/<git-sha>.zip   (no env flags)
+1. upload gs://aforo-dev-teamf-functions/<fn>/<git-sha>.zip
+2. gcloud functions deploy <fn> --source gs://aforo-dev-teamf-functions/<fn>/<git-sha>.zip   (no env flags)
 3. smoke test (HTTP: /health or a dry call; dlq-monitor: none, it is event-triggered)
 4. rollback: gcloud run services update-traffic <fn> --to-revisions <previous>=100
 ```
 
-Accepted trade-off: they are the mock and the DLQ monitor, and rollback is one command.
+Accepted trade-off: they are small, rarely changed (pre-warmer, DLQ monitor, payment mock), and rollback is one command.
 
 ## Probes
 

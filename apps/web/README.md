@@ -1,30 +1,36 @@
-# web — Purchase frontend (Angular 20 + SSR)
+# web — Purchase frontend (Next.js + SSR)
 
 > Owners: Sergio (all screens except the queue) · Cristian (queue screen)
 > Contracts: every `contracts/openapi/*.yaml`, always through the Gateway
-> Status: not started
+> Status: all seven screens implemented against the contracts and a dev mock; not yet run against `dev`
+> Framework: Next.js (App Router) — [ADR-0007](../../docs/adr/0007-web-framework-next.md) replaces D-02 (Angular)
 
-Seven screens, no more. UI built with an existing component library (suggestion: Angular
-Material); no custom visual system. SSR only on public routes `/` and `/events/:id`; queue, buy
-and orders render on the client — they depend on the session and there is nothing to precompute.
+Seven screens, no more. UI built with an existing component library (shadcn-style components on
+Radix and Tailwind, themed through tokens in `src/app/globals.css`); no custom visual system. SSR only
+on public routes `/` and `/events/:id`; queue, buy and orders render on the client — they depend on
+the session and there is nothing to precompute.
 
 ## Screens
 
-| Route | Screen | Calls | Owner |
-| ----- | ------ | ----- | ----- |
-| `/login` | Email and name, no password | `POST /auth/login` | Sergio |
-| `/` | Published events | `GET /events?status=PUBLISHED` | Sergio |
-| `/events/:id` | Detail, sectors, prices, sale state | `GET /events/{id}`, `GET /events/{id}/availability` | Sergio |
-| `/events/:id/queue` | Position, estimated wait, admission | `POST /queue/{id}/join`, SSE `stream` (fallback: `status` every 3 s) | Cristian |
-| `/events/:id/buy` | Sector, quantity, total, pass countdown | `POST /orders` | Sergio |
-| `/orders/:id/pay` | Summary and jump to the mock | `POST /orders/{id}/payment-intents` | Sergio |
-| `/orders`, `/orders/:id` | My orders and detail with status | `GET /orders`, `GET /orders/{id}` | Sergio |
+| Route                    | Screen                                  | Calls                                                                | Owner    |
+| ------------------------ | --------------------------------------- | -------------------------------------------------------------------- | -------- |
+| `/login`                 | Email and name, no password             | `POST /auth/login`                                                   | Sergio   |
+| `/`                      | Published events                        | `GET /events?status=PUBLISHED`                                       | Sergio   |
+| `/events/:id`            | Detail, sectors, prices, sale state     | `GET /events/{id}`, `GET /events/{id}/availability`                  | Sergio   |
+| `/events/:id/queue`      | Position, estimated wait, admission     | `POST /queue/{id}/join`, SSE `stream` (fallback: `status` every 3 s) | Cristian |
+| `/events/:id/buy`        | Sector, quantity, total, pass countdown | `POST /orders`                                                       | Sergio   |
+| `/orders/:id/pay`        | Summary and jump to the mock            | `POST /orders/{id}/payment-intents`                                  | Sergio   |
+| `/orders`, `/orders/:id` | My orders and detail with status        | `GET /orders`, `GET /orders/{id}`                                    | Sergio   |
+
+Besides the screens, the app answers `GET /health/live` and `GET /health/ready` (no auth). `ready`
+checks that the Gateway answers, and is what the deployment smoke test calls.
 
 ## Client rules
 
-1. The token goes on every request via an interceptor; a `401` sends the user to `/login`. The
-   login screen stores whatever the Gateway returns: when Identity Platform arrives only this
-   screen changes.
+1. All HTTP goes through one API client (`src/api/client.ts`, the only place that calls `fetch`). It
+   adds `Authorization` and `X-Queue-Pass`; a `401` clears the session and sends the buyer to
+   `/login`. The login screen stores whatever the Gateway returns: when Identity Platform arrives
+   only this screen changes.
 2. `passToken` lives in memory and is mirrored in `sessionStorage` to survive a refresh. It is
    sent as `X-Queue-Pass` even though nobody verifies it today, so the client doesn't change later.
 3. The pass countdown uses `passExpiresAt`; at zero the screen returns to the queue. No auto-renew.
@@ -35,24 +41,77 @@ and orders render on the client — they depend on the session and there is noth
    **with the `correlationId` visible**. That makes traceability demonstrable.
 6. Order detail polls every 2 s while status is `PENDING_PAYMENT`: the webhook arrives after the
    user returns.
+7. The frontend never compares dates to decide if a sale is open: it uses `saleState`.
 
-## Suggested layout
+## Decisions taken while building (not in the plan)
+
+- **SSE is read with `fetch`, not `EventSource`.** The stream is authenticated with a bearer token
+  and `EventSource` cannot send an `Authorization` header (`src/lib/sse.ts`). If the stream fails or
+  ends without admission, the screen polls `status` every 3 s (D-13).
+- **The queue keeps trying.** If the stream cannot be opened or is cut, the screen polls `status` every
+  3 s and tries the stream again every 30 s, closing the previous connection each time. After 3 failed
+  polls in a row it says it is offline (the place is kept) and recovers by itself. A 429 is waited out for
+  its `Retry-After` (capped at 60 s) and is not an outage. A 404 while waiting means the queue forgot the
+  buyer (Redis was recreated): the screen says so and offers to join again. When the tab becomes visible
+  again it asks for the status once. The buyer cannot leave the queue: the contract has no operation for it.
+- **Two tabs on the same queue.** Each tab joins (the queue answers a repeat join with the same place),
+  follows its own stream and, when admitted, saves its own copy of the same pass. Neither tab knows about
+  the other and nothing breaks, but both keep a connection open. `sessionStorage` is per tab, so a pass
+  earned in one tab is not found by a buy screen opened in another tab of the same buyer.
+- **The pass belongs to a buyer.** `passToken` is stored per buyer and event, so signing out and in as
+  someone else on the same tab does not hand over the previous buyer's pass. The session is shared by
+  the tabs, so if another tab signs in as someone else while this one waits, the queue screen joins again
+  as the new buyer instead of asking for one buyer's status with the other's token.
+- **Two different countdowns.** The queue pass (10 min, `passExpiresAt`) and the reservation
+  (`reservationTtlSeconds`, `expiresAt` of the order) are labelled differently on screen ("Tu turno
+  vence en…" / "Tus entradas están reservadas por…") so the buyer knows which one is running.
+- **Payment key.** `Idempotency-Key` on `payment-intents` is generated when the pay screen opens. After
+  an API error the next click is a new attempt (new key); after a lost connection it is the same one.
+- **A payment that never arrives.** If the buyer cancels or declines at the payment page, the backend sends
+  nothing: the order just stays `PENDING_PAYMENT`. The order screen says "confirming your payment"
+  for 10 s (the plan promises `PAID` in under 5 s) and then switches to "we don't see your payment yet"
+  with a button to try again while the reservation lasts.
+- **Event names in orders.** `Order` only has `eventId`/`sectorId` and the Gateway does not
+  aggregate, so order screens ask Catalog for the event (cached per event, `src/lib/event-cache.ts`).
+- **Runtime config.** The image is built once (ADR-0004), so `NEXT_PUBLIC_*` is not used: the root
+  layout reads `API_BASE_URL` per request and passes it to the browser (`src/lib/config.tsx`).
+- **Public pages refresh themselves.** `/events/:id` starts from the server render and refetches every
+  15 s, so a sale that opens or a sector that sells out shows without a reload.
+
+## Layout
 
 ```
-src/app/
-  core/          interceptors (auth, correlation, queue pass), error mapping by code, session store
-  api/           types generated from contracts/openapi (openapi-typescript), thin API clients
-  features/
-    login/  catalog/  event-detail/  queue/  buy/  pay/  orders/
-  shared/        UI building blocks from the component library
+src/
+  app/            routes (App Router): login, events, queue, buy, orders, health/*
+  api/            client.ts (the only fetch), endpoints.ts (one function per operation),
+                  generated/ (types from contracts/openapi — `npm run gen:api`, never hand-edited)
+  features/       queue/, buy/, orders/  — screens with their own state
+  components/     shared pieces (ticket stub, countdown, error panel, badges) and ui/ (library components)
+  lib/            session, pass, errors by code, money/date formatting, SSE parser, hooks
+  lib/i18n/es.ts  every user-facing string (Spanish for the demo audience)
+mock-server/      dev-only stateful mock of the Gateway (not part of the image)
 ```
 
 ## UI language
 
-Code is English. User-facing copy: decide once (Spanish for the demo audience is fine) and keep
-it in one place (e.g. `src/app/shared/i18n/`), never hard-coded in components.
+Code is English. User-facing copy is Spanish and lives in one place, `src/lib/i18n/es.ts`; components
+never hard-code visible text.
+
+## Run it
+
+```bash
+npm install                                   # at the repo root
+npm run mock --workspace @aforo/web           # fake Gateway on :8080 (see mock-server/README.md)
+npm run dev --workspace @aforo/web            # the app on :4000
+```
+
+Or point `API_BASE_URL` / `SSR_API_BASE_URL` at the deployed Gateway (see [.env.example](.env.example)).
+Other scripts: `test` (unit tests), `lint`, `typecheck`, `build`, `gen:api`.
+
+The mock has switches to exercise the paths that must fail well: `MOCK_NO_SSE=1` (polling fallback),
+`MOCK_PASS_SECONDS`, `MOCK_RESERVATION_SECONDS` (expiry), `POST /__mock/fault?mode=error` (payment down).
 
 ## Configuration
 
-See [.env.example](.env.example). Local dev points at the deployed Gateway or at Prism mocks
-(`make mock SERVICE=…`).
+See [.env.example](.env.example). `API_BASE_URL` is what the browser calls; `SSR_API_BASE_URL` is what
+the server uses to render `/` and `/events/:id`. Both are read at runtime.

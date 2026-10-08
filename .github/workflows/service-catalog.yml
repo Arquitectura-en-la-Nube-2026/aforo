@@ -1,0 +1,18 @@
+name: service-catalog
+
+on:
+  pull_request:
+    paths: ["services/catalog/**", "packages/common/**", ".github/workflows/_service.yml", ".github/workflows/service-catalog.yml"]
+  push:
+    branches: [main]
+    paths: ["services/catalog/**", "packages/common/**", ".github/workflows/_service.yml", ".github/workflows/service-catalog.yml"]
+  workflow_dispatch:
+
+jobs:
+  service:
+    uses: ./.github/workflows/_service.yml
+    with:
+      service: catalog
+    permissions:
+      contents: read
+      id-token: write
