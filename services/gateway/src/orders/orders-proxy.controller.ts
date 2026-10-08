@@ -12,9 +12,10 @@ import {
 } from "../upstream/upstream.service";
 
 // A payment intent waits for Orders' own E-06 policy toward the mock: up to 3 attempts of 0.5 s
-// connect + 2 s response, plus backoff (infra/envs/dev/services.tf), about 8 s. The Gateway must
-// outlast it, or the 503 PAYMENT_UNAVAILABLE of the demo would become a 500 here.
-const ORDERS_TIMEOUT_MS = 10_000;
+// connect + 2 s response, plus backoff (infra/envs/dev/services.tf), about 8 s, plus Orders' own DB
+// work and a possible cold start. The Gateway must outlast it, or the 503 PAYMENT_UNAVAILABLE of the
+// demo would become a 500 here.
+const ORDERS_TIMEOUT_MS = 15_000;
 
 /** The Orders routes of the public route map, including the mock's signed webhook. */
 @Controller("api/v1")

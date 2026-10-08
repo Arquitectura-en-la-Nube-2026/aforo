@@ -81,10 +81,10 @@ problem+json answers pass through with `Idempotent-Replayed`; anything else (an 
 500 `INTERNAL`.
 
 - **Orders.** Writes forward `Idempotency-Key`, `X-Queue-Pass` (logged by Orders, never verified,
-  D-07) and the body exactly as received. The list keeps its query string. Timeout **10 s**, not the
+  D-07) and the body exactly as received. The list keeps its query string. Timeout **15 s**, not the
   usual 2.5 s: a payment intent waits for Orders' own E-06 policy toward the mock (3 attempts of
-  0.5 s + 2 s, plus backoff, about 8 s), and the Gateway must outlast it so the buyer gets Orders'
-  `503 PAYMENT_UNAVAILABLE`, not a Gateway 500. ID-token audience `aforo-orders`.
+  0.5 s + 2 s, plus backoff, about 8 s), plus Orders' DB work and a possible cold start, and the
+  Gateway must outlast it so the buyer gets Orders' `503 PAYMENT_UNAVAILABLE`, not a Gateway 500. ID-token audience `aforo-orders`.
 - **Payment webhook.** Called by the mock through Cloud Tasks, so no session. The raw body is
   forwarded byte for byte with `X-Signature` (the app runs with `rawBody`): an HMAC over a
   re-serialized JSON would not match.
