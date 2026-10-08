@@ -86,6 +86,12 @@ export class JsonLogger implements LoggerService {
       fields.error = message.message;
       fields.stack = message.stack;
     }
+    // An Error passed after the message, e.g. logger.error("payment call failed", err).
+    const extra = rest.find((value): value is Error => value instanceof Error);
+    if (extra) {
+      fields.error ??= extra.message;
+      fields.stack ??= extra.stack;
+    }
     // Nest's error(message, stack, context): keep the stack.
     if (severity === "ERROR" && typeof rest[0] === "string" && rest.length > 1) fields.stack ??= rest[0];
 
