@@ -35,16 +35,20 @@ export class DbService implements Queryable, OnApplicationShutdown {
   /** Commits when `work` resolves, rolls back when it throws (and rethrows). */
   async tx<T>(work: (client: Queryable) => Promise<T>): Promise<T> {
     const client: PoolClient = await this.pool.connect();
+    let broken: Error | undefined;
     try {
       await client.query("BEGIN");
       const result = await work(client);
       await client.query("COMMIT");
       return result;
     } catch (error) {
-      await client.query("ROLLBACK").catch(() => undefined);
+      // A connection that cannot even roll back is discarded instead of returned to the pool.
+      await client.query("ROLLBACK").catch((rollbackError: Error) => {
+        broken = rollbackError;
+      });
       throw error;
     } finally {
-      client.release();
+      client.release(broken);
     }
   }
 

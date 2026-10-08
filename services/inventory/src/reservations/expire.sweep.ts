@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { StructuredLogger, getCorrelationId } from "@aforo/common";
 import type { HousekeepingSweep } from "@aforo/common/nest";
 import { ReservationsService } from "./reservations.service";
 
@@ -13,11 +14,23 @@ const BATCH = 200;
 export class ExpireSweep implements HousekeepingSweep {
   readonly name = "expire-overdue";
 
+  private readonly logger = new StructuredLogger(process.env.K_SERVICE ?? process.env.SERVICE_NAME ?? "inventory");
+
   constructor(private readonly reservations: ReservationsService) {}
 
+  /** One failed expiry is logged and retried next minute; it must not hold back the rest. */
   async run(): Promise<void> {
     for (const id of await this.reservations.overdue(BATCH)) {
-      await this.reservations.expire(id, false);
+      try {
+        await this.reservations.expire(id, false);
+      } catch (error) {
+        this.logger.write("WARNING", "expiry.sweep_failed", {
+          event: "expiry_sweep_failed",
+          correlationId: getCorrelationId(),
+          reservationId: id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   }
 }
