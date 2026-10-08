@@ -94,12 +94,9 @@ test("Catalog writes require a session and forward the validated user, body and 
 });
 
 test("availability and internal paths never reach Catalog", async () => {
-  const paths = [
-    `/api/v1/events/${eventId}/availability`,
-    "/internal/v1/housekeeping",
-    `/api/v1/events/${eventId}/internal/v1/housekeeping`,
-  ];
-  for (const url of paths) {
+  // Availability is Inventory's route (availability-proxy.test.cjs); here Inventory is unreachable.
+  await inject({ method: "GET", url: `/api/v1/events/${eventId}/availability` });
+  for (const url of ["/internal/v1/housekeeping", `/api/v1/events/${eventId}/internal/v1/housekeeping`]) {
     const response = await inject({ method: "GET", url });
     assert.equal(response.statusCode, 404, url);
   }
