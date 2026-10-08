@@ -1,7 +1,7 @@
 # mock-payment-gateway — function standing in for the payment gateway (HTTP)
 
 > Owner: Daniel Felipe (with Orders) · Contract: [contracts/openapi/mock-payment-gateway.yaml](../../contracts/openapi/mock-payment-gateway.yaml)
-> Decision: D-16 (replaces D-09), amended by D-21 · Status: not started
+> Decision: D-16 (replaces D-09), amended by D-21 · Status: implemented (storage: Firestore, decided)
 >
 > Built as a Cloud Run function and following the same FaaS rules, but it is a **test double for
 > an external system**, so it is not presented as one of Aforo's FaaS components (those are
@@ -45,6 +45,7 @@ protects against a real network dependency. When Wompi arrives, only Orders' ada
 | ---------- | ----------------- |
 | Cold start | Single bundled file, no framework, Firestore/Tasks clients lazily created in module scope. Target < 1 s; measure and record here |
 | Execution time | Timeout 30 s. The 2 s delay is **not** a sleep: it's a Cloud Tasks schedule |
+| Bundle | `npm run build` bundles our code (and `@aforo/common` core) into `dist/index.js` (~11 kB). `@google-cloud/*` stay external (gRPC SDKs load proto files from disk and cannot be bundled); they are installed from `package.json` at deploy. **Cold start not measured yet**: measure after the first deploy and record it here |
 | Deployment | CI uploads `<sha>.zip` and runs `gcloud functions deploy --source gs://…/<sha>.zip` (no env flags; config is Terraform's). All-at-once, rollback with `update-traffic` (ADR-0004) |
 | Statelessness | No module-level state except SDK clients |
 
