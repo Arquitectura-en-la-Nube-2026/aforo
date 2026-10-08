@@ -1,7 +1,7 @@
 # inventory — Inventory & reservations
 
 > Owner: Luis Esteban · Contract: [contracts/openapi/inventory.yaml](../../contracts/openapi/inventory.yaml)
-> Status: not started
+> Status: implemented (18 tests incl. Postgres and the E-02 concurrency test); not yet deployed
 
 Owner of availability. The only service where a race condition turns into lost money, so there
 are **no shortcuts** here. PostgreSQL, database `inventory`. Except for availability, the whole
@@ -80,9 +80,25 @@ Produces `ReservationExpired` (`aforo.inventory.reservation-expired`). Consumes 
 Tables: `sector_availability` (with `version`), `reservation` (with `expires_at`),
 `buyer_event_total`, `event_projection`, `idempotency_key`, `inbox`, `outbox`.
 
-Every table carries `event_id`, and keys and indexes start with it (e.g.
+Every business table carries `event_id`, and keys and indexes start with it (e.g.
 `sector_availability (event_id, sector_id)`): no sharding in the slice, but `event_id` is the
-partition key if it is ever needed (ADR-0006).
+partition key if it is ever needed (ADR-0006). `inbox` and `idempotency_key` are keyed by message
+and request key. `idempotency_key.response_body` is `json` (not `jsonb`) so a replay is byte for
+byte the first response. A trigger refuses any status change out of a terminal state.
+
+Migrations: `npm run migrate` (needs only `DATABASE_URL`).
+
+## Running the tests
+
+`npm test` runs the unit tests. The Postgres tests, including the concurrency test, are opt-in
+and wipe their database, whose name must end in `_test`:
+
+```bash
+TEST_DATABASE_URL=postgres://inventory:test@127.0.0.1:5432/inventory_test npm test
+```
+
+The concurrency test prints one `concurrency_evidence` line (counts, p50/p95) for the artifact. To
+run it against `dev`, see the header of `test/concurrency/concurrency.test.cjs`.
 
 ## Configuration
 
