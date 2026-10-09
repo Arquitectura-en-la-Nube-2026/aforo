@@ -10,9 +10,11 @@ import type { GatewayConfig } from "../config/gateway-config";
 
 export type QueueOperation = "join" | "status" | "stream";
 
-// contracts/conventions.md: connect 0.5 s and response 2 s by default. fetch has one timer, so the
-// whole request gets the sum; for the stream it only covers the wait for the response headers.
-const UPSTREAM_TIMEOUT_MS = 2500;
+// Not the 2.5 s default of contracts/conventions.md: the queue scales to zero after ~15 min idle and a
+// cold start took ~3.2 s on dev (NestJS + Redis), so the first join after a pause became a 500 while
+// the queue went on to admit the buyer. The prewarmer only keeps it warm inside sales windows (D-21).
+// fetch has one timer for the whole request; for the stream it only covers the response headers.
+const UPSTREAM_TIMEOUT_MS = 8000;
 
 // The queue's custom ID-token audience (infra/modules/cloud-run-service: "aforo-<name>").
 const QUEUE_AUDIENCE = "aforo-queue";
@@ -118,9 +120,14 @@ export class QueueProxyService {
         redirect: "manual",
         signal: controller.signal,
       });
-    } catch {
+    } catch (error) {
       clearTimeout(timer);
       if (clientGone) return; // aborted because the client left: there is no one to answer
+      this.logger.write("ERROR", "queue.upstream_failed", {
+        operation,
+        timeoutMs: UPSTREAM_TIMEOUT_MS,
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw new DomainError("INTERNAL", "queue service unavailable");
     }
 
