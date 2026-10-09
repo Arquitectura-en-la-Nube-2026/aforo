@@ -21,7 +21,7 @@ Deployed at the time: gateway `04f8e13`, catalog `77eabb4`, orders, inventory an
 | 7 | Pay in the mock, return to the order | Checkout page through `/mock-gateway`, redirected back | [07-mock.png](07-mock.png) |
 | 8 | `PAID` in under 5 s | **4.7 s** from clicking Pay to "Pago confirmado" | [08-paid.png](08-paid.png) |
 | 9 | Listed in `GET /orders` | "Pagado" in "Mis pedidos" | [09-orders.png](09-orders.png) |
-| 10 | Follow it by `correlationId`, including the bus | See below | — |
+| 10 | Follow it by `correlationId`, including the bus | See below | [10-trace.png](10-trace.png), [10b-orderpaid.png](10b-orderpaid.png) |
 
 The mock delivered the payment notification once (`/webhook-dispatch` 204 at 01:05:17 UTC).
 
@@ -40,12 +40,20 @@ jsonPayload.correlationId="ecd0fae3-dcf8-4ec7-a332-3695a82c852e"
 | 00:39:19.813 | orders | `POST /api/v1/orders` 201 |
 | 00:39:19.818 | gateway | `POST /api/v1/orders` 201 |
 
+![Cloud Logging, one correlationId across orders, inventory and gateway](10-trace.png)
+
+(The console shows UTC-4: 20:39 on Oct 8 = 00:39 UTC on Oct 9.)
+
 The hop through the bus: the seed's facts carry one `correlationId` from catalog to inventory and
 the queue (`jsonPayload.event="seed_published"`, then the `inventory-*` and `queue-*` push
 deliveries, all `204`).
 
-**Still to capture for the artifact:** the same trace as a Cloud Logging screenshot, and one that
-shows `OrderPaid` leaving through the outbox (see the missing list).
+The payment of the same order, `OrderPaid` leaving through the outbox: orders' webhook
+(`correlationId b521c06b-3d63-48aa-a3f4-cedfb1da7034`) at 00:39:27.700 took 291 ms and the outbox
+flushed one message (`outbox_flushed`, `published: 1`); the timeline shows the four duplicate
+deliveries of that run (`#39`, see [fails-well](../fails-well/)) that published nothing.
+
+![Cloud Logging, OrderPaid published once through the outbox](10b-orderpaid.png)
 
 ## Earlier run (same evening, 00:39 UTC)
 
