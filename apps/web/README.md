@@ -2,7 +2,8 @@
 
 > Owners: Sergio (all screens except the queue) · Cristian (queue screen)
 > Contracts: every `contracts/openapi/*.yaml`, always through the Gateway
-> Status: all seven screens implemented against the contracts and a dev mock; not yet run against `dev`
+> Status: all seven screens deployed on `dev`; acceptance steps 1–9 ran through it on Oct 8
+> ([happy-path evidence](../../docs/evidence/happy-path/))
 > Framework: Next.js (App Router) — [ADR-0007](../../docs/adr/0007-web-framework-next.md) replaces D-02 (Angular)
 
 Seven screens, no more. UI built with an existing component library (shadcn-style components on

@@ -8,12 +8,12 @@ Workload Identity Federation — no service-account keys in the repo.
 | Workflow | Trigger paths | On PR | On merge to `main` | Status |
 | -------- | ------------- | ----- | ------------------ | ------ |
 | `contracts.yml` | `contracts/**` | Redocly lint | Redocly lint | ✅ in place |
-| `common.yml` | `packages/common/**` | lint, test, build | publish/build | TODO |
+| `common.yml` | — | — | — | Not built: every service and function workflow builds `packages/common` (their paths include `packages/common/**`), but its own lint and tests do not run in CI |
 | `service-<name>.yml` ×5 | `services/<name>/**`, `packages/common/**` | lint, test, docker build | lint, test, docker build; deploy (push by SHA, `--no-traffic --tag`, smoke, `--to-latest`) only if `DEPLOY_ON_MERGE=true` or run by hand | ✅ in place |
 | `web.yml` | `apps/web/**` | lint, test, build | same as services for `aforo-web` | ✅ in place |
 | `function-<name>.yml` ×3 | `functions/<name>/**`, `packages/common/**` | lint, test, bundle | lint, test, bundle; deploy (upload `<sha>.zip`, `gcloud functions deploy --source`, no env flags) only if `DEPLOY_ON_MERGE=true` or run by hand | ✅ `dlq-monitor`, `prewarmer`, `mock-payment-gateway` (runs once its code is on `main`) |
 | `infra.yml` | `infra/**` | `terraform fmt -check`, `validate`, `make plan` | — (Platform runs `make apply` by hand from `main`) | ✅ in place |
-| `e2e.yml` | manual (`workflow_dispatch`) | — | run acceptance tests against `dev` | TODO |
+| `e2e.yml` | — | — | — | Not built: the acceptance runs are the scripts in `docs/evidence/` ([e2e/README.md](../../e2e/README.md)) |
 
 Every deploy follows D-19: artifact tagged by git SHA and deployed by digest, new revision with
 no traffic, smoke test on its tag URL, then 100 % traffic

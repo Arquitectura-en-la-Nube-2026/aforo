@@ -70,8 +70,8 @@ Cloud SQL can only create databases and users while the instance runs.
 2. Runs the seed again, so Queue builds its projection in the new, empty Redis.
 3. Check `queue` `/health/ready` = 200 and that `GET /api/v1/queue/{eventId}/status` answers.
 
-Not exercised yet: the first `make redis-up` also proves Direct VPC egress from `queue` in
-`southamerica-east1` (ADR-0001 risk).
+Direct VPC egress from `queue` in `southamerica-east1` (the ADR-0001 risk) works: every live
+run on Oct 8–9 went through the waiting room with Memorystore on (`docs/evidence/`).
 
 ## `make redis-down`
 

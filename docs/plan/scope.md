@@ -34,7 +34,9 @@ Nothing enters scope unless it appears in the acceptance script ([acceptance.md]
 - Covered: RF-01 to RF-05, RF-08 to RF-12, and the orders half of RF-14.
 - Partial: **RF-06** — a pass with expiry is issued, but since nobody verifies it downstream, a
   reservation sent without a pass is not rejected.
-- Out: RF-07, RF-13, RF-15 to RF-26.
+- Partial: **RF-18** — login is simulated by the Gateway (email, no password, HS256 session; D-06);
+  no registration or managed identity provider.
+- Out: RF-07, RF-13, RF-15 to RF-17, RF-19 to RF-26.
 
 ### Biggest conscious deviation from Entrega 2
 

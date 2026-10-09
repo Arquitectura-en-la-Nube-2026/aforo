@@ -27,6 +27,6 @@
 ## Pending
 
 - ~~Compare the delivery guide with the acceptance script.~~ Done: see [delivery-4.md](delivery-4.md).
-  Deadline moved to Mon Oct 12; D-16 … D-20 proposed.
+  Deadline moved to Mon Oct 12; D-16 … D-21 decided and built.
 - Presentation date is still to be defined by the course; the environment must be turned on for it.
 - The environment is turned off after the presentation. Evidence is the video and the repo.

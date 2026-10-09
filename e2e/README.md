@@ -1,6 +1,9 @@
 # e2e — Acceptance tests
 
-> Owner: Julián · Status: not started
+> Owner: Julián · Status: **not built.** The acceptance script was run on `dev` with the scripts in
+> [docs/evidence/](../docs/evidence/README.md) instead: `happy-path/purchase.cjs` (Playwright, steps 1–9),
+> `fails-well/fails-well.cjs`, `e02-concurrency/e02-gateway.cjs`, and the expiry and duplicate-webhook
+> runs recorded there. The plan below is kept as the shape a suite would take.
 
 Automates the acceptance script in [docs/plan/acceptance.md](../docs/plan/acceptance.md) against
 the deployed `dev` environment (base URL = Gateway).

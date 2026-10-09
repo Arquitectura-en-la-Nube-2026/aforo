@@ -1,7 +1,7 @@
 # orders — Orders & checkout
 
 > Owner: Daniel Felipe · Contract: [contracts/openapi/orders.yaml](../../contracts/openapi/orders.yaml)
-> Status: implemented on the real `@aforo/common` (boots, 26 tests incl. Postgres); not yet deployed · Also owns [functions/mock-payment-gateway](../../functions/mock-payment-gateway/README.md)
+> Status: deployed on `dev` (26 tests incl. Postgres); happy path, E-06, expiry and blue/green demonstrated Oct 8–9 ([docs/evidence/](../../docs/evidence/README.md)) · Also owns [functions/mock-payment-gateway](../../functions/mock-payment-gateway/README.md)
 
 Orchestrates the saga and owns the order. Talks to the payment gateway — today the
 `mock-payment-gateway` function (D-16), tomorrow Wompi — **only through its payment adapter**

@@ -1,4 +1,5 @@
-# Permanent, free VPC for Memorystore (ADR-0001). Only queue has Direct VPC egress into it.
+# Permanent, free VPC for Memorystore (ADR-0001). queue and gateway (quota counters) reach it
+# through Direct VPC egress.
 
 resource "google_compute_network" "aforo" {
   name                    = "aforo-vpc"

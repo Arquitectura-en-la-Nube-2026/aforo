@@ -36,6 +36,7 @@ Node 24. Deadline: **Mon Oct 12, 2026**. Requirement-by-requirement map: `docs/p
   commit, plus housekeeping), never by calling Pub/Sub directly.
 - **No work outside a request**: Cloud Run throttles CPU between requests. No timers, no pollers,
   no "respond now, process later"; periodic work goes in `/internal/v1/housekeeping` (ADR-0002).
+  The one exception is the queue's admission tick (CPU always allocated, a Redis lock per tick, ADR-0002).
 - Every GCP resource is declared in Terraform under `infra/`. Nothing is created in the console.
   Terraform owns config, CI owns code and traffic; environment switches only via `make` (ADR-0004).
 - Lifecycle entities follow `docs/architecture/state-machines.md`; transitions are conditional updates.

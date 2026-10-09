@@ -47,7 +47,7 @@ but a test double for an external system. Everything else is a container on Clou
 | `services/orders` | order, checkout saga, payment adapter | Postgres `orders` | `/api/v1/orders/**`, `/api/v1/payments/webhook` | [README](../../services/orders/README.md) |
 | `services/inventory` | availability, reservations | Postgres `inventory` | `/api/v1/events/{id}/availability` | [README](../../services/inventory/README.md) |
 | `functions/prewarmer` | pre-warming per sales window: min instances of gateway and queue (FaaS, E-01) | — (state = pending Cloud Tasks) | — | [README](../../functions/prewarmer/README.md) |
-| `functions/mock-payment-gateway` | stand-in for the external PSP (function, test double) | Firestore *(optional)* | `/mock-gateway/**` | [README](../../functions/mock-payment-gateway/README.md) |
+| `functions/mock-payment-gateway` | stand-in for the external PSP (function, test double) | Firestore (collection `payments`) | `/mock-gateway/**` | [README](../../functions/mock-payment-gateway/README.md) |
 | `functions/dlq-monitor` | dead-letter alerting (FaaS, E-05) | — | — | [README](../../functions/dlq-monitor/README.md) |
 
 The full public routing table is in [`services/gateway/README.md`](../../services/gateway/README.md).
