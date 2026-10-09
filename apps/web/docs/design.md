@@ -9,22 +9,33 @@ plan; this file records the choices made inside those limits. Copy lives in
 Buying tickets is one tense moment (waiting for your turn) surrounded by calm, scannable screens
 (browse, choose, pay). The design spends its boldness in two places and keeps the rest quiet:
 
-- **The position number** on the queue screen: very large, tabular digits in the primary colour. It
+- **The position number** on the queue screen: very large, tabular digits in the brand gradient. It
   is the one thing the buyer came to see, so it gets the whole card.
 - **The ticket stub**: a card with a dashed perforation and two notches. The perforation is
   information, not decoration: above it is _what_ (event, venue, date), below it is _how much_
   (sector, quantity, price, total). Events, order summary, queue and buy summary all use it.
 
-| Token     | Value     | Use                                                  |
-| --------- | --------- | ---------------------------------------------------- |
-| `paper`   | `#f5f6f8` | page background                                      |
-| `surface` | `#ffffff` | stubs, inputs                                        |
-| `ink`     | `#101828` | text (> 15:1 on paper)                               |
-| `muted`   | `#4b5565` | secondary text (7:1 on paper)                        |
-| `primary` | `#2f3fe0` | the single action per screen, the position number    |
-| `citrus`  | `#f2c230` | only for deadlines (turn and reservation countdowns) |
-| `success` | `#0f7b4f` | sale open, paid                                      |
-| `danger`  | `#b3261e` | errors, sold out, countdown under 30 s               |
+The palette is sampled from the logo (`public/brand/aforo-logo.png`): the wordmark runs from navy to
+royal blue, the ticket is azure, and the ring around it runs from gold to amber.
+
+| Token            | Value     | Use                                                                    |
+| ---------------- | --------- | ---------------------------------------------------------------------- |
+| `paper`          | `#f3f6fc` | page background                                                        |
+| `surface`        | `#ffffff` | stubs, inputs                                                          |
+| `ink`            | `#0b1236` | text (> 15:1 on paper)                                                 |
+| `muted`          | `#4a5372` | secondary text (7:1 on paper)                                          |
+| `primary`        | `#0437c4` | the single action per screen, prices (logo royal blue, 8.9:1 on white) |
+| `primary-strong` | `#021557` | hover, links, gradient start (logo navy)                               |
+| `azure`          | `#0382fb` | gradient end only, never text (3.8:1)                                  |
+| `citrus`         | `#fdd207` | deadlines (turn and reservation countdowns), "your turn" (logo gold)   |
+| `amber`          | `#faa703` | ring gradient only (logo amber)                                        |
+| `success`        | `#0c7049` | sale open, paid                                                        |
+| `danger`         | `#b3261e` | errors, sold out, countdown under 30 s                                 |
+
+Brand moments, all decorative and `aria-hidden`: the navy→royal→azure gradient (`.brand-gradient`) on a
+stripe above the header, the catalog hero and the top band of each event card; the gold ring
+(`.brand-orbit`) inside those; the queue position painted with the same gradient (`.brand-text`). The
+header shows the logo itself and the favicon (`src/app/icon.svg`) redraws the ticket-and-ring mark.
 
 Type: _Bricolage Grotesque_ for headings and figures, _Instrument Sans_ for text, both served from
 npm (no third-party request at runtime). Numbers use tabular figures so a changing position or

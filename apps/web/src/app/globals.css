@@ -2,23 +2,28 @@
 
 /*
  * Theme tokens. Existing component library, themed through tokens: no custom visual system
- * (.claude/rules/frontend.md). Contrast was checked against WCAG AA: ink, muted and primary are
- * all above 7:1 on paper/surface; success and danger above 5:1.
+ * (.claude/rules/frontend.md). The palette is sampled from the Aforo logo: the wordmark runs from
+ * navy (primary-strong) to royal blue (primary), the ticket is azure, the ring around it goes from
+ * gold (citrus) to amber. Contrast was checked against WCAG AA: ink, muted and primary are all
+ * above 7:1 on paper/surface; success and danger above 5:1. Azure is under 4.5:1 on white, so it
+ * is only for gradients and bars, never for text.
  */
 @theme {
-  --color-paper: #f5f6f8;
+  --color-paper: #f3f6fc;
   --color-surface: #ffffff;
-  --color-ink: #101828;
-  --color-muted: #4b5565;
-  --color-line: #d9dee7;
-  --color-primary: #2f3fe0;
-  --color-primary-strong: #2331b8;
-  --color-primary-soft: #e8eafd;
-  --color-citrus: #f2c230;
-  --color-citrus-soft: #fff4cc;
-  --color-citrus-ink: #3a2e00;
-  --color-success: #0f7b4f;
-  --color-success-soft: #e3f4ec;
+  --color-ink: #0b1236;
+  --color-muted: #4a5372;
+  --color-line: #d8dfee;
+  --color-primary: #0437c4;
+  --color-primary-strong: #021557;
+  --color-primary-soft: #e6edfd;
+  --color-azure: #0382fb;
+  --color-citrus: #fdd207;
+  --color-citrus-soft: #fff4c2;
+  --color-citrus-ink: #3d2e00;
+  --color-amber: #faa703;
+  --color-success: #0c7049;
+  --color-success-soft: #e1f3ea;
   --color-danger: #b3261e;
   --color-danger-soft: #fce9e7;
 
@@ -82,6 +87,41 @@
   /* Prices, positions and countdowns: digits the same width so numbers don't jitter as they change. */
   .num {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* The logo's wordmark gradient (navy to royal) with the ticket's azure as the last stop. */
+  .brand-gradient {
+    background: linear-gradient(
+      125deg,
+      var(--color-primary-strong) 0%,
+      var(--color-primary) 55%,
+      var(--color-azure) 100%
+    );
+  }
+  .brand-text {
+    background: linear-gradient(
+      160deg,
+      var(--color-primary-strong) 10%,
+      var(--color-primary) 55%,
+      var(--color-azure) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* The ring around the ticket in the logo: a tilted gold-to-amber ellipse, purely decorative. */
+  .brand-orbit {
+    position: absolute;
+    pointer-events: none;
+    border-radius: 50%;
+    border: 6px solid transparent;
+    background: linear-gradient(90deg, var(--color-amber), var(--color-citrus)) border-box;
+    mask:
+      linear-gradient(#000 0 0) padding-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    transform: rotate(-18deg);
   }
 
   /*

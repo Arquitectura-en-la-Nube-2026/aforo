@@ -14,7 +14,7 @@ export const metadata: Metadata = {
   description: 'Entra a la fila, elige tus entradas y págalas sin perder tu lugar.',
 };
 
-export const viewport: Viewport = { themeColor: '#f5f6f8' };
+export const viewport: Viewport = { themeColor: '#021557' };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   // Render per request: the Gateway URL is runtime config (ADR-0004), not a build-time constant.

@@ -59,7 +59,8 @@ export function LoginForm() {
         </p>
       )}
 
-      <form onSubmit={onSubmit} noValidate className="stub grid gap-5 p-6">
+      <form onSubmit={onSubmit} noValidate className="stub grid gap-5 overflow-hidden p-6">
+        <div aria-hidden className="brand-gradient -mx-6 -mt-6 h-1.5" />
         <div className="grid gap-1.5">
           <Label htmlFor={emailId}>{es.login.email}</Label>
           <Input

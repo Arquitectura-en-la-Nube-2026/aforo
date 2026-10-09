@@ -1,6 +1,7 @@
 'use client';
 
-import { LogOut, Ticket } from 'lucide-react';
+import { LogOut } from 'lucide-react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -28,13 +29,19 @@ export function SiteHeader() {
   );
 
   return (
-    <header className="border-b border-line bg-surface">
+    <header className="sticky top-0 z-30 border-b border-line bg-surface/90 backdrop-blur">
+      <div aria-hidden className="brand-gradient h-1" />
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2 sm:px-6">
-        <Link href="/" className="flex min-h-11 items-center gap-2 font-display text-xl font-bold">
-          <span className="grid size-8 place-items-center rounded-lg bg-primary text-white">
-            <Ticket className="size-4" aria-hidden />
-          </span>
-          {es.brand}
+        <Link href="/" className="flex min-h-11 items-center">
+          {/* The logo as drawn (public/brand), so the header matches the brand exactly. */}
+          <Image
+            src="/brand/aforo-logo.png"
+            alt={es.brand}
+            width={113}
+            height={37}
+            priority
+            unoptimized
+          />
         </Link>
         <nav aria-label={es.nav.mainNav} className="flex flex-wrap items-center gap-1">
           {link('/', es.nav.events, pathname === '/' || pathname.startsWith('/events'))}

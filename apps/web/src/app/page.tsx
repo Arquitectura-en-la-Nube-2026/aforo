@@ -19,9 +19,15 @@ export default async function EventsPage() {
 
   return (
     <div className="grid gap-8 animate-rise">
-      <div className="grid max-w-2xl gap-3">
-        <h1 className="text-4xl font-bold sm:text-5xl">{es.events.title}</h1>
-        <p className="text-lg text-muted">{es.events.intro}</p>
+      <div className="brand-gradient relative isolate overflow-hidden rounded-card px-6 py-10 text-white sm:px-10 sm:py-14">
+        <div
+          aria-hidden
+          className="brand-orbit -right-24 -bottom-28 -z-10 hidden h-64 w-[34rem] opacity-90 sm:block"
+        />
+        <div className="grid max-w-2xl gap-3">
+          <h1 className="text-4xl font-bold sm:text-5xl">{es.events.title}</h1>
+          <p className="text-lg text-white/85">{es.events.intro}</p>
+        </div>
       </div>
 
       {failure && <LoadError error={failure} />}
