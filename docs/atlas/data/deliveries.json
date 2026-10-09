@@ -1,0 +1,930 @@
+{
+  "deliveries": [
+    {
+      "id": "Entrega-1",
+      "title": "Requirements analysis (Analisis de requisitos)",
+      "file": "docs/design/entrega-1-requirements.pdf",
+      "summary": "Dated Sept 4, 2026, 24 pages. Defines Aforo as a ticketing platform for mass events whose core is a virtual waiting room, an inventory with timed reservations and anti-bot control, with revenue as a per-ticket commission so cost must follow sales. It decomposes the domain with DDD (core: waiting room, inventory, anti-bot reincidence rules; supporting: catalog, orders, tickets, back-office, notifications, post-sale; generic: payments, identity, email, CAPTCHA, DIAN invoicing, CDN), prioritizes with MoSCoW, lists 8 capabilities and 26 functional requirements with acceptance criteria, six cloud quality scenarios E-01..E-06, and constraints RC/RT/RD/RN. It closes with a feasibility/fit analysis (verdict: strong cloud-native candidate on managed services, 99.9% in one multi-zone region).",
+      "keyPoints": [
+        "Invariant behind the name: never sell more tickets than exist, never fail to sell those that do (p.3).",
+        "MoSCoW (p.5-6): Must = waiting room, reservation with expiry, per-person limit, sandbox payment, ticket issuance with unique code, minimal catalog with general-admission sectors; Should = organizer dashboard, PULEP report, cancellation with refund, audit history; Could = gate validation, transfer, organizer webhooks; Won't = numbered seats map, resale, native app.",
+        "Capabilities CAP-01..CAP-08 (p.6); RF-01..RF-26 with Given/When/Then acceptance criteria (p.6-15).",
+        "Quality scenarios E-01 elasticity, E-02 inventory integrity, E-03 zone failure, E-04 multi-tenant isolation, E-05 observability, E-06 payment gateway resilience (p.15-17).",
+        "Constraints: RC-01..04 regulatory (Ley 1581, Ley 1493/PULEP, no card data/PCI, DIAN e-invoice) p.18; RT-01..04 technology (one cloud, South American region with 2+ zones, certified Colombian gateway, managed identity, everything as code) p.19; RD-01..06 design (stateless, idempotency key, data ownership, signed admission pass required, versioned API, strong consistency only on inventory) p.19-20; RN-01..03 business (<= 50 USD/month, no 24/7 on-call, cost follows sales) p.20.",
+        "Original E-06 asked to extend reservation expiry during a gateway outage; later corrected by Entrega 3 (D-05, ADR-03).",
+        "Self-declared gaps (p.24): no real organizer interviews, latency to region not measured, legal thresholds unverified, no accessibility scenario."
+      ]
+    },
+    {
+      "id": "Entrega-2",
+      "title": "Structural architectural design (Diseno arquitectonico estructural)",
+      "file": "docs/design/entrega-2-structural-design.pdf",
+      "summary": "Dated Sept 11, 2026, 15 pages. Designs only the Must scope (CAP-01..05, CAP-07) as microservices with a complementary event-driven style on managed, stateless compute. The C&C view has a browser, SSR frontend, managed Edge (CDN/WAF/DDoS, CAPTCHA check) as the only public entry, an API Gateway, six logic services (Catalog, Waiting room, Orders & Checkout, Inventory, Ticket issuance, Notifications), an event bus with three durable queues (Expiry, Issuance, Notifications) and their DLQs, one store per service and four external systems. It fixes the patterns (API Gateway, Database per Service, orchestrated Saga, Transactional Outbox, Inbox, Circuit Breaker, Bulkhead, ACL), decisions DA-01..DA-11, sync/async interactions, the reservation-and-payment saga, and polyglot persistence.",
+      "keyPoints": [
+        "Scope table (p.3-4): CAP-01 RF-01..03, CAP-02 RF-04..06, CAP-03 RF-08..14, CAP-04 RF-15, CAP-05 RF-18, CAP-07 RF-24; RF-07, 16, 17, 19-23, 25, 26 out.",
+        "Composition rules (p.4): every public request enters through the Edge and, if business, the API Gateway; each service owns its store; config data is replicated as event-fed local projections; external providers go through internal adapters.",
+        "Element catalog (p.6) and connectors (p.6-7): webhook and SSE connectors are not drawn; Inventory and Orders fetch the waiting room JWKS to verify the signed pass locally.",
+        "Patterns (p.8): API Gateway, Database per Service, Saga, Transactional Outbox, idempotent consumer with Inbox, Circuit Breaker (payment, email), Bulkhead (payment, email, expiry), Anti-Corruption Layer.",
+        "Decisions DA-01..DA-11 (p.9), e.g. DA-02 signed pass verified locally, DA-03 one local transaction for availability/unique reservation/per-person limit, DA-04 orchestrated saga, DA-11 replicate event config into Waiting room and Inventory.",
+        "Async messages (p.10): EventoPublicado/ReglasDeVentaConfiguradas -> Waiting room + Inventory; VencerReserva delayed queue -> Inventory; ReservaExpirada -> Orders; payment webhook -> Orders; PedidoPagado -> Issuance; EntradasEmitidas -> Notifications.",
+        "Saga in 11 steps with conditional ACTIVE->CONFIRMED vs ACTIVE->EXPIRED race; late payment goes to REFUND_PENDING and is reversed (p.11).",
+        "Persistence (p.12): PostgreSQL for Catalog, Orders, Inventory, Issuance; Redis-compatible in-memory store for the waiting room; managed key-value for Notifications.",
+        "Rejected (p.14): Space-Based Architecture, micro-frontends, event sourcing, streaming."
+      ]
+    },
+    {
+      "id": "Entrega-3",
+      "title": "Quality-attribute-driven architectural design (Diseno arquitectonico guiado por atributos de calidad)",
+      "file": "docs/design/entrega-3-quality-attributes.pdf",
+      "summary": "Dated Sept 18, 2026, 32 pages. Reviews the Entrega 2 architecture scenario by scenario, finds six weaknesses D-01..D-06 (no telemetry, reactive-only autoscaling, no DB connection cap, circuit breaker without timeouts, E-06 contradicting RF-09, no security scenario) and rewrites seven scenarios (E-01, E-02, E-03, E-05, E-06 corrected, new E-07 cost and E-08 security; E-04 dropped) with tactics. It evaluates service categories (serverless containers for all eight deployables, FaaS rejected; L7 LB+CDN+WAF created per window; own gateway; managed relational DB; per-window in-memory store; pub/sub plus delayed-delivery queue) and picks Google Cloud southamerica-east1. It gives the deployment view, sizing parameters, network topology (VPC, private IPs, NAT, internal ingress), resource inventory, traceability, trade-offs TO-01..TO-03 and ADR-03/ADR-04.",
+      "keyPoints": [
+        "Weaknesses D-01..D-06 (p.4). Note: these D-xx IDs collide with the repo's plan decision IDs D-01..D-21 (docs/plan/decisions.md); they are different things.",
+        "Scenario set (p.4-5): E-01, E-02, E-03, E-05, E-06, E-07, E-08; E-04 (tenant isolation) left out because it needs a baseline that does not exist (p.31).",
+        "Changes vs Entrega 2 (p.11): Secret Manager and observability suite as new external elements, health checks in six services, Edge rate limiting, Inventory instance cap, per-window minimum instances, payment adapter timeouts, correlation ID in messages, per-window Edge and in-memory store, WAF rules, token validation and role authorization in the gateway, private network with NAT, internal ingress, per-window DB profile.",
+        "Provider decision (p.19): Google Cloud southamerica-east1 (Sao Paulo), southamerica-west1 as alternative; Oracle rejected (single zone), AWS and Azure lose on credit/learning curve.",
+        "Concrete products in the deployment view (p.20-21): global external Application LB + Cloud CDN + Cloud Armor, Cloud Run, Cloud SQL for PostgreSQL, Memorystore for Redis Standard 1 GB, Firestore (Notifications), Pub/Sub, Cloud Tasks, Identity Platform, reCAPTCHA Enterprise, Secret Manager, Cloud Logging/Trace/Monitoring, Artifact Registry, VPC + Cloud Router + Cloud NAT, Wompi, Terraform + GitHub Actions.",
+        "Sizing (p.22-26): gateway 2-20 window instances, waiting room 3-20 with 3600 s timeout, Inventory max 10 x concurrency 40 x pool 5 = 50 of 100 window connections; DB rest profile 0.6 GB/25 connections, window profile 1 vCPU/3.75 GB/100 with standby in zone b; payment adapter 0.5 s connect / 2 s response timeouts, breaker opens after 5 failures with 30 s recovery, 3 retries 200 ms-5 s with jitter; Pub/Sub ack 60 s, 5 attempts, 10-600 s backoff; Cloud Tasks 20 dispatches/s, 5 concurrent.",
+        "Cost target (E-07, p.9): idle <= 15 USD/month, total <= 50 USD/month; TO-01 says the Edge costs about 18 USD/month idle (p.29).",
+        "ADR-03 (p.30): reservation expiry is not extended during a gateway failure; late payment is reversed. ADR-04 (p.30): ES256 pass key in Secret Manager, signing in process.",
+        "Self-declared gaps (p.31): no value verified by a real load test, cost figures from a reference region, latency from Bogota unmeasured, Should/Could scope not covered, WAF false-positive threshold is a goal not a measurement."
+      ]
+    }
+  ],
+  "requirements": [
+    {
+      "id": "RF-01",
+      "text": "Organizer creates an event with venue, date, sectors (name, capacity, price) and sales window; it starts as draft.",
+      "source": "Entrega-1 p.6",
+      "inSlice": "yes",
+      "realizedBy": [
+        "svc-catalog",
+        "job-seed"
+      ],
+      "note": "Must. No organizer UI (D-08); events are created by seed or API."
+    },
+    {
+      "id": "RF-02",
+      "text": "Organizer publishes the event; it shows in the catalog and sales open only at the configured time.",
+      "source": "Entrega-1 p.7",
+      "inSlice": "yes",
+      "realizedBy": [
+        "svc-catalog",
+        "topic-event-published",
+        "app-web",
+        "fn-prewarmer"
+      ],
+      "note": "Must. Covered per docs/plan/scope.md."
+    },
+    {
+      "id": "RF-03",
+      "text": "Organizer sets sales rules: max tickets per person and reservation duration.",
+      "source": "Entrega-1 p.7",
+      "inSlice": "yes",
+      "realizedBy": [
+        "svc-catalog",
+        "topic-sales-rules-configured",
+        "svc-inventory"
+      ],
+      "note": "Must. Replicated to Inventory and Queue by event (DA-11)."
+    },
+    {
+      "id": "RF-04",
+      "text": "Authenticated buyer gets a waiting-room position and sees position and estimated time.",
+      "source": "Entrega-1 p.7",
+      "inSlice": "yes",
+      "realizedBy": [
+        "svc-queue",
+        "data-memorystore",
+        "svc-gateway",
+        "app-web"
+      ],
+      "note": "Must. Position over SSE with polling fallback (D-13); needs Memorystore up (ADR-0001)."
+    },
+    {
+      "id": "RF-05",
+      "text": "Arrivals within the opening window get a random position; later arrivals are first-come first-served.",
+      "source": "Entrega-1 p.8",
+      "inSlice": "yes",
+      "realizedBy": [
+        "svc-queue",
+        "data-memorystore"
+      ],
+      "note": "Must. services/queue/README.md: random score within openingWindowSeconds, timestamp after."
+    },
+    {
+      "id": "RF-06",
+      "text": "At the front of the queue the buyer gets a time-limited purchase pass; reservations without a valid pass are rejected.",
+      "source": "Entrega-1 p.8",
+      "inSlice": "partial",
+      "realizedBy": [
+        "svc-queue",
+        "svc-gateway"
+      ],
+      "note": "Must. Pass with expiry is issued but never verified downstream (D-07), so RD-04 is not met (docs/plan/scope.md)."
+    },
+    {
+      "id": "RF-07",
+      "text": "Buyer keeps queue position after closing and reopening the page while the turn is valid.",
+      "source": "Entrega-1 p.8",
+      "inSlice": "no",
+      "realizedBy": [],
+      "note": "Should. Out of Entrega 2 and of the slice."
+    },
+    {
+      "id": "RF-08",
+      "text": "With a valid turn, buyer picks sector and quantity; inventory is decremented and a reservation with expiry created; insufficient seats -> 'sold out' with no partial decrement; concurrent last seat -> exactly one wins.",
+      "source": "Entrega-1 p.9",
+      "inSlice": "yes",
+      "realizedBy": [
+        "svc-orders",
+        "svc-inventory",
+        "db-inventory"
+      ],
+      "note": "Must. Concurrency test evidence for E-02 (D-20)."
+    },
+    {
+      "id": "RF-09",
+      "text": "Unpaid reservation expires at its deadline, seats return, order becomes expired; late payment is not accepted and is reversed/refunded.",
+      "source": "Entrega-1 p.9",
+      "inSlice": "yes",
+      "realizedBy": [
+        "svc-inventory",
+        "tq-reservation-expiry",
+        "topic-reservation-expired",
+        "svc-orders"
+      ],
+      "note": "Must. Cloud Tasks expiry plus one-minute sweep (ADR-0003). Late-payment refund is a REFUND_PENDING path in state-machines.md against the mock only."
+    },
+    {
+      "id": "RF-10",
+      "text": "Buyer pays through the gateway; on confirmation the order is paid and the reservation becomes a sale; declined payment keeps the order pending until expiry.",
+      "source": "Entrega-1 p.9-10",
+      "inSlice": "yes",
+      "realizedBy": [
+        "svc-orders",
+        "fn-mock-payment-gateway",
+        "tq-payment-webhooks",
+        "svc-inventory"
+      ],
+      "note": "Must. Against a mock gateway, not Wompi (D-16)."
+    },
+    {
+      "id": "RF-11",
+      "text": "A buyer with an active reservation for an event cannot open a second one for it.",
+      "source": "Entrega-1 p.10",
+      "inSlice": "yes",
+      "realizedBy": [
+        "svc-inventory",
+        "db-inventory"
+      ],
+      "note": "Must."
+    },
+    {
+      "id": "RF-12",
+      "text": "Reject a reservation that would exceed the per-person maximum, counting paid orders.",
+      "source": "Entrega-1 p.10",
+      "inSlice": "yes",
+      "realizedBy": [
+        "svc-inventory",
+        "db-inventory"
+      ],
+      "note": "Must. 409 LIMIT_EXCEEDED (services/inventory/README.md)."
+    },
+    {
+      "id": "RF-13",
+      "text": "On payment confirmation the buyer receives a confirmation with order summary and tickets.",
+      "source": "Entrega-1 p.10-11",
+      "inSlice": "no",
+      "realizedBy": [],
+      "note": "Must in Entrega 1/2. Notifications service is out of the slice."
+    },
+    {
+      "id": "RF-14",
+      "text": "Buyer lists orders and tickets with their status.",
+      "source": "Entrega-1 p.11",
+      "inSlice": "partial",
+      "realizedBy": [
+        "svc-orders",
+        "app-web"
+      ],
+      "note": "Must. Only the orders half; tickets half belongs to Ticket issuance, which is out."
+    },
+    {
+      "id": "RF-15",
+      "text": "One ticket with a unique signed code is issued per sold seat.",
+      "source": "Entrega-1 p.11",
+      "inSlice": "no",
+      "realizedBy": [],
+      "note": "Must. Ticket issuance is out; OrderPaid is published with no subscriber."
+    },
+    {
+      "id": "RF-16",
+      "text": "Gate staff scan a ticket: valid, already used or invalid; first valid scan marks it used.",
+      "source": "Entrega-1 p.11",
+      "inSlice": "no",
+      "realizedBy": [],
+      "note": "Could."
+    },
+    {
+      "id": "RF-17",
+      "text": "Ticket holder transfers a ticket; original voided, new one issued to receiver.",
+      "source": "Entrega-1 p.12",
+      "inSlice": "no",
+      "realizedBy": [],
+      "note": "Could."
+    },
+    {
+      "id": "RF-18",
+      "text": "User registers and logs in with email/password or an external identity provider.",
+      "source": "Entrega-1 p.12",
+      "inSlice": "partial",
+      "realizedBy": [
+        "svc-gateway",
+        "app-web"
+      ],
+      "note": "Must. Simulated login: Gateway issues an HS256 JWT with no password (D-06); no registration, no Identity Platform."
+    },
+    {
+      "id": "RF-19",
+      "text": "User exports personal data or requests account deletion.",
+      "source": "Entrega-1 p.12",
+      "inSlice": "no",
+      "realizedBy": [],
+      "note": "Should."
+    },
+    {
+      "id": "RF-20",
+      "text": "Organizer views an audit history of changes to the event.",
+      "source": "Entrega-1 p.13",
+      "inSlice": "no",
+      "realizedBy": [],
+      "note": "Should."
+    },
+    {
+      "id": "RF-21",
+      "text": "Organizer dashboard with sold/available seats per sector and revenue.",
+      "source": "Entrega-1 p.13",
+      "inSlice": "no",
+      "realizedBy": [],
+      "note": "Should."
+    },
+    {
+      "id": "RF-22",
+      "text": "Organizer downloads the regulatory ticketing report (MinCultura/DIAN/PULEP).",
+      "source": "Entrega-1 p.13",
+      "inSlice": "no",
+      "realizedBy": [],
+      "note": "Could (but RC-02 depends on it)."
+    },
+    {
+      "id": "RF-23",
+      "text": "Organizer cancels an event; tickets voided, buyers notified, refunds requested.",
+      "source": "Entrega-1 p.14",
+      "inSlice": "no",
+      "realizedBy": [],
+      "note": "Should."
+    },
+    {
+      "id": "RF-24",
+      "text": "Joining the waiting room requires a valid CAPTCHA; requests without it are rejected.",
+      "source": "Entrega-1 p.14",
+      "inSlice": "no",
+      "realizedBy": [],
+      "note": "Must in Entrega 1/2. No CAPTCHA in the slice (target-vs-slice.md 'Bot protection: None')."
+    },
+    {
+      "id": "RF-25",
+      "text": "Temporarily block accounts/devices that exceed a threshold of rejected attempts.",
+      "source": "Entrega-1 p.14",
+      "inSlice": "no",
+      "realizedBy": [],
+      "note": "Should. The Gateway per-IP quota is a rate limit, not this rule."
+    },
+    {
+      "id": "RF-26",
+      "text": "Organizer registers a webhook URL and receives business event notifications.",
+      "source": "Entrega-1 p.15",
+      "inSlice": "no",
+      "realizedBy": [],
+      "note": "Could."
+    },
+    {
+      "id": "RC-01",
+      "text": "Personal data handled per Ley 1581/2012; transfers only to adequate jurisdictions; device fingerprints are personal data.",
+      "source": "Entrega-1 p.18",
+      "inSlice": "partial",
+      "realizedBy": [
+        "infra-terraform"
+      ],
+      "note": "Only the South American region choice applies; no privacy policy or RF-19 flows."
+    },
+    {
+      "id": "RC-02",
+      "text": "Comply with Ley 1493/2011: PULEP registration, cultural levy withholding, 5-year retention, reporting.",
+      "source": "Entrega-1 p.18",
+      "inSlice": "no",
+      "realizedBy": [],
+      "note": "Out of prototype."
+    },
+    {
+      "id": "RC-03",
+      "text": "Never store, process or transmit card data; delegate charging to a certified gateway.",
+      "source": "Entrega-1 p.18",
+      "inSlice": "yes",
+      "realizedBy": [
+        "svc-orders",
+        "fn-mock-payment-gateway"
+      ],
+      "note": "Trivially met: payments go to a mock, no card fields."
+    },
+    {
+      "id": "RC-04",
+      "text": "DIAN electronic invoice per sale and consumer-statute checkout (total price, refund policy).",
+      "source": "Entrega-1 p.18",
+      "inSlice": "no",
+      "realizedBy": [],
+      "note": ""
+    },
+    {
+      "id": "RT-01",
+      "text": "Single public cloud, South American region with at least two zones.",
+      "source": "Entrega-1 p.19",
+      "inSlice": "yes",
+      "realizedBy": [
+        "infra-terraform"
+      ],
+      "note": "GCP southamerica-east1 (D-04); multi-zone failover itself is dropped."
+    },
+    {
+      "id": "RT-02",
+      "text": "Payments via a Colombian certified gateway with sandbox (Wompi, PayU, Mercado Pago).",
+      "source": "Entrega-1 p.19",
+      "inSlice": "no",
+      "realizedBy": [
+        "fn-mock-payment-gateway"
+      ],
+      "note": "Replaced by a mock function (D-16)."
+    },
+    {
+      "id": "RT-03",
+      "text": "Authentication uses a managed identity provider; no own password storage.",
+      "source": "Entrega-1 p.19",
+      "inSlice": "partial",
+      "realizedBy": [
+        "svc-gateway"
+      ],
+      "note": "No passwords are stored, but there is no managed IdP either (D-06)."
+    },
+    {
+      "id": "RT-04",
+      "text": "All infrastructure as code, deployed from a repo; nothing created in the console.",
+      "source": "Entrega-1 p.19",
+      "inSlice": "yes",
+      "realizedBy": [
+        "infra-terraform",
+        "ci-pipeline",
+        "ops-make-switches"
+      ],
+      "note": "Terraform under infra/ (ADR-0004)."
+    },
+    {
+      "id": "RD-01",
+      "text": "No service keeps session, queue or reservation state in local memory.",
+      "source": "Entrega-1 p.19",
+      "inSlice": "yes",
+      "realizedBy": [
+        "svc-gateway",
+        "svc-catalog",
+        "svc-queue",
+        "svc-orders",
+        "svc-inventory",
+        "app-web"
+      ],
+      "note": "Stateless services (CLAUDE.md, ADR-0002); queue keeps an in-process admission timer per delivery-4.md compute table."
+    },
+    {
+      "id": "RD-02",
+      "text": "Every state-changing operation carries an idempotency key with exactly-once effect.",
+      "source": "Entrega-1 p.19",
+      "inSlice": "yes",
+      "realizedBy": [
+        "lib-common",
+        "svc-orders",
+        "svc-inventory"
+      ],
+      "note": "packages/common/idempotency."
+    },
+    {
+      "id": "RD-03",
+      "text": "Each bounded context owns its data; no service reads another's database.",
+      "source": "Entrega-1 p.19",
+      "inSlice": "yes",
+      "realizedBy": [
+        "data-cloudsql",
+        "db-catalog",
+        "db-orders",
+        "db-inventory"
+      ],
+      "note": "Three databases and three users on one instance (D-05)."
+    },
+    {
+      "id": "RD-04",
+      "text": "Reservation and payment endpoints accept only requests with a valid admission pass signed by the waiting room.",
+      "source": "Entrega-1 p.19",
+      "inSlice": "no",
+      "realizedBy": [],
+      "note": "Biggest conscious deviation (D-07, scope.md)."
+    },
+    {
+      "id": "RD-05",
+      "text": "Breaking API changes only under a new version.",
+      "source": "Entrega-1 p.20",
+      "inSlice": "yes",
+      "realizedBy": [
+        "contracts"
+      ],
+      "note": "/api/v1, breaking change = /v2 (CLAUDE.md)."
+    },
+    {
+      "id": "RD-06",
+      "text": "Strong consistency only for inventory decrement; queue position, dashboards and notifications may be eventual.",
+      "source": "Entrega-1 p.20",
+      "inSlice": "yes",
+      "realizedBy": [
+        "svc-inventory",
+        "svc-queue"
+      ],
+      "note": ""
+    },
+    {
+      "id": "RN-01",
+      "text": "Infrastructure budget <= 50 USD/month including load tests.",
+      "source": "Entrega-1 p.20",
+      "inSlice": "yes",
+      "realizedBy": [
+        "ops-make-switches",
+        "data-memorystore"
+      ],
+      "note": "Environment kept off except when working (D-11); Memorystore on demand (ADR-0001)."
+    },
+    {
+      "id": "RN-02",
+      "text": "No 24/7 on-call: recovery must be automatic and platform capacity managed.",
+      "source": "Entrega-1 p.20",
+      "inSlice": "partial",
+      "realizedBy": [
+        "svc-gateway",
+        "svc-catalog",
+        "svc-queue",
+        "svc-orders",
+        "svc-inventory"
+      ],
+      "note": "Managed Cloud Run and health checks; no DB failover."
+    },
+    {
+      "id": "RN-03",
+      "text": "Revenue is a per-ticket commission; infrastructure cost must follow sales.",
+      "source": "Entrega-1 p.20",
+      "inSlice": "partial",
+      "realizedBy": [
+        "ops-make-switches"
+      ],
+      "note": "Scale to zero and make down; no cost-per-ticket dashboard."
+    }
+  ],
+  "targetComponents": [
+    {
+      "name": "Navegador web (web browser)",
+      "source": "Entrega-2 p.6",
+      "role": "Client for buyer and organizer.",
+      "inSlice": "yes",
+      "sliceIds": [],
+      "note": "Buyer only; no organizer UI (D-08)."
+    },
+    {
+      "name": "Frontend SSR",
+      "source": "Entrega-2 p.6",
+      "role": "Serves purchase and configuration portal without local session or reservation state.",
+      "inSlice": "yes",
+      "sliceIds": [
+        "app-web"
+      ],
+      "note": "Next.js SSR (ADR-0007, supersedes D-02 Angular). Purchase portal only."
+    },
+    {
+      "name": "Edge administrado (managed Edge: CDN, WAF, DDoS, routing)",
+      "source": "Entrega-2 p.6",
+      "role": "Only public entry; terminates TLS, CDN, WAF, DDoS, verifies CAPTCHA token on the queue-join route, routes to frontend or API Gateway.",
+      "inSlice": "dropped",
+      "sliceIds": [],
+      "note": "target-vs-slice.md: browser hits the Gateway directly; Gateway applies per-IP quota. Way back: add LB in Terraform."
+    },
+    {
+      "name": "API Gateway",
+      "source": "Entrega-2 p.6",
+      "role": "Validates access token, applies quotas, routes to the owning service.",
+      "inSlice": "yes",
+      "sliceIds": [
+        "svc-gateway"
+      ],
+      "note": "Own NestJS service on Cloud Run as Entrega 3 chose (p.15); also issues the simulated HS256 session token (D-06) and generates the correlation ID."
+    },
+    {
+      "name": "Catalogo y eventos (Catalog & events)",
+      "source": "Entrega-2 p.6",
+      "role": "Manages events, sectors, prices, windows and sales rules.",
+      "inSlice": "yes",
+      "sliceIds": [
+        "svc-catalog",
+        "db-catalog"
+      ],
+      "note": "Publishes EventPublished and SalesRulesConfigured through the outbox."
+    },
+    {
+      "name": "Sala de espera y admision (Waiting room & admission)",
+      "source": "Entrega-2 p.6",
+      "role": "Assigns positions, computes progress and issues signed, time-limited purchase passes.",
+      "inSlice": "yes",
+      "sliceIds": [
+        "svc-queue",
+        "data-memorystore"
+      ],
+      "note": "Pass is an opaque token in Redis, not ES256-signed, never verified downstream (D-07)."
+    },
+    {
+      "name": "Pedidos y Checkout (Orders & checkout)",
+      "source": "Entrega-2 p.6",
+      "role": "Owns the order and orchestrates reservation, payment, confirmation and compensation.",
+      "inSlice": "yes",
+      "sliceIds": [
+        "svc-orders",
+        "db-orders"
+      ],
+      "note": "Saga, outbox, payment adapter with circuit breaker/timeouts/retry (D-18)."
+    },
+    {
+      "name": "Inventario y reservas (Inventory & reservations)",
+      "source": "Entrega-2 p.6",
+      "role": "Protects availability, per-person limit, single active reservation and expiry.",
+      "inSlice": "yes",
+      "sliceIds": [
+        "svc-inventory",
+        "db-inventory"
+      ],
+      "note": "Does not verify the pass (D-07)."
+    },
+    {
+      "name": "Emision de entradas (Ticket issuance)",
+      "source": "Entrega-2 p.6",
+      "role": "Generates one ticket and signed code per confirmed seat and exposes them.",
+      "inSlice": "dropped",
+      "sliceIds": [],
+      "note": "target-vs-slice.md: out; OrderPaid topic has no subscriber."
+    },
+    {
+      "name": "Notificaciones (Notifications)",
+      "source": "Entrega-2 p.6",
+      "role": "Sends the buyer confirmation and ticket links via an email provider.",
+      "inSlice": "dropped",
+      "sliceIds": [],
+      "note": "target-vs-slice.md: out, with its queue and DLQ."
+    },
+    {
+      "name": "Bus de eventos (Event bus)",
+      "source": "Entrega-2 p.6",
+      "role": "Routes each published fact to interested subscriptions.",
+      "inSlice": "yes",
+      "sliceIds": [
+        "topic-event-published",
+        "topic-sales-rules-configured",
+        "topic-reservation-expired",
+        "topic-order-paid"
+      ],
+      "note": "Pub/Sub, four topics with push subscriptions (scope.md, infra/envs/dev/messaging.tf)."
+    },
+    {
+      "name": "Cola de Vencimientos (Expiry queue, delayed delivery)",
+      "source": "Entrega-2 p.6",
+      "role": "Durable delayed delivery of reservation expiry to Inventory.",
+      "inSlice": "yes",
+      "sliceIds": [
+        "tq-reservation-expiry"
+      ],
+      "note": "Cloud Tasks as Entrega 3 chose, plus a one-minute sweep (ADR-0003)."
+    },
+    {
+      "name": "Cola de Emision (Issuance queue)",
+      "source": "Entrega-2 p.6",
+      "role": "Durable subscription delivering OrderPaid to Ticket issuance.",
+      "inSlice": "dropped",
+      "sliceIds": [],
+      "note": "OrderPaid published but nobody consumes it (CLAUDE.md)."
+    },
+    {
+      "name": "Cola de Notificaciones (Notifications queue)",
+      "source": "Entrega-2 p.6",
+      "role": "Durable subscription delivering TicketsIssued to Notifications.",
+      "inSlice": "dropped",
+      "sliceIds": [],
+      "note": "Notifications out."
+    },
+    {
+      "name": "DLQ de Vencimientos, Emision y Notificaciones",
+      "source": "Entrega-2 p.6",
+      "role": "Hold messages that exhausted retries for manual inspection.",
+      "inSlice": "replaced",
+      "sliceIds": [
+        "fn-dlq-monitor",
+        "obs-dead-letter-alert"
+      ],
+      "note": "Slice has one DLQ per Pub/Sub push subscription (six DLQ topics per D-17/D-21) watched by the dlq-monitor function; the expiry path uses Cloud Tasks, not a Pub/Sub DLQ."
+    },
+    {
+      "name": "Almacenes por servicio (per-service stores)",
+      "source": "Entrega-2 p.6, p.12",
+      "role": "Each service's own store: PostgreSQL for Catalog/Orders/Inventory/Issuance, Redis for waiting room, key-value for Notifications.",
+      "inSlice": "yes",
+      "sliceIds": [
+        "data-cloudsql",
+        "db-catalog",
+        "db-orders",
+        "db-inventory",
+        "data-memorystore"
+      ],
+      "note": "One db-f1-micro instance, three databases, single zone (ADR-0005); Memorystore Basic only for live tests and demos (ADR-0001)."
+    },
+    {
+      "name": "Identidad gestionada (managed identity)",
+      "source": "Entrega-2 p.6",
+      "role": "External OIDC provider for login; Gateway validates tokens against its JWKS.",
+      "inSlice": "replaced",
+      "sliceIds": [
+        "svc-gateway"
+      ],
+      "note": "Simulated login with HS256 JWT in the Gateway (D-06)."
+    },
+    {
+      "name": "CAPTCHA provider",
+      "source": "Entrega-2 p.6",
+      "role": "Human verification checked at the Edge before joining the queue.",
+      "inSlice": "dropped",
+      "sliceIds": [],
+      "note": "target-vs-slice.md: Bot protection None."
+    },
+    {
+      "name": "Pasarela de pago (payment gateway)",
+      "source": "Entrega-2 p.6",
+      "role": "External payment authorization and reversal, confirms via webhook.",
+      "inSlice": "replaced",
+      "sliceIds": [
+        "fn-mock-payment-gateway",
+        "tq-payment-webhooks",
+        "data-firestore"
+      ],
+      "note": "Mock Cloud Run function with fault injection (D-16, D-18); delayed webhook via Cloud Tasks; the mock keeps state in Firestore."
+    },
+    {
+      "name": "Proveedor de correo (email provider)",
+      "source": "Entrega-2 p.6",
+      "role": "Delivers buyer emails behind a circuit breaker.",
+      "inSlice": "dropped",
+      "sliceIds": [],
+      "note": "Notifications out."
+    },
+    {
+      "name": "Gestor de secretos (secret manager)",
+      "source": "Entrega-3 p.11, p.17",
+      "role": "Holds the ES256 private key for the pass and tickets (ADR-04).",
+      "inSlice": "replaced",
+      "sliceIds": [
+        "infra-secrets"
+      ],
+      "note": "Secret Manager exists for slice secrets (e.g. JWT/HMAC), but no ES256 pass key (D-07)."
+    },
+    {
+      "name": "Suite de observabilidad (observability suite)",
+      "source": "Entrega-3 p.11, p.17",
+      "role": "Destination for logs, metrics and traces with alerts on payment error rate and DLQ.",
+      "inSlice": "replaced",
+      "sliceIds": [
+        "obs-logging",
+        "obs-dead-letter-alert",
+        "fn-dlq-monitor"
+      ],
+      "note": "Structured JSON logs with correlation ID plus DLQ alert; no tracing or error-rate alert (target-vs-slice.md)."
+    },
+    {
+      "name": "Red privada con NAT (VPC, Cloud Router, Cloud NAT)",
+      "source": "Entrega-3 p.11, p.23",
+      "role": "Private IPs for DB and in-memory store, internal ingress, controlled egress via NAT.",
+      "inSlice": "replaced",
+      "sliceIds": [
+        "infra-vpc",
+        "infra-iam"
+      ],
+      "note": "One VPC used only by queue -> Memorystore; Cloud Run kept private via IAM invoker; Cloud SQL via connector; no NAT (target-vs-slice.md)."
+    },
+    {
+      "name": "Registro de imagenes (image registry)",
+      "source": "Entrega-3 p.18, p.20",
+      "role": "One image repository per environment.",
+      "inSlice": "yes",
+      "sliceIds": [
+        "infra-artifact-registry"
+      ],
+      "note": "Artifact Registry; images per git SHA, deploy by digest (D-19)."
+    },
+    {
+      "name": "Infraestructura como codigo y CI/CD (Terraform + GitHub Actions)",
+      "source": "Entrega-3 p.18, p.20",
+      "role": "Declares all infrastructure; creates and destroys per-window elements.",
+      "inSlice": "yes",
+      "sliceIds": [
+        "infra-terraform",
+        "ci-pipeline",
+        "ops-make-switches",
+        "job-migrate"
+      ],
+      "note": "Terraform owns config, CI owns code and traffic (ADR-0004); blue/green via revision tags (D-19)."
+    },
+    {
+      "name": "Almacen de documentos para Notificaciones (Firestore)",
+      "source": "Entrega-3 p.16, p.20",
+      "role": "Pay-per-operation store for notification delivery records and dedup.",
+      "inSlice": "replaced",
+      "sliceIds": [
+        "data-firestore"
+      ],
+      "note": "Notifications is out; Firestore is used instead by the payment mock function (functions/mock-payment-gateway/src/firestore-repository.ts)."
+    },
+    {
+      "name": "Pre-warming / FaaS (not a component in Entrega 2/3)",
+      "source": "Entrega-3 p.5, p.15",
+      "role": "Entrega 3 expresses pre-warming as a parameter (min instances set as code) and rejects FaaS for services.",
+      "inSlice": "replaced",
+      "sliceIds": [
+        "fn-prewarmer",
+        "topic-event-published",
+        "tq-prewarm-windows"
+      ],
+      "note": "Slice realizes pre-warming as a FaaS component triggered by a Pub/Sub push subscription on EventPublished and timed by the Cloud Tasks queue prewarm-windows (D-21, infra/envs/dev/functions.tf, messaging.tf); minimum 1 instead of 2-3 (target-vs-slice.md). No Cloud Scheduler job is involved."
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "E-01",
+      "name": "Elasticity at sales opening",
+      "attribute": "elasticity (performance)",
+      "stimulus": "3,000 users ask to join the queue in the first 60 s, starting from near-zero traffic.",
+      "response": "Ingress path already has warm instances because the window is in the catalog; autoscaling adds more by concurrency; load balancing spreads them; capacity released after the window.",
+      "measure": "All arrivals get a position with no 5xx on the ingress path; p95 to get a position <= 2 s; extra capacity ready in <= 90 s; no request served by a cold-start instance in the first minute.",
+      "tacticsDesigned": [
+        "Pre-warming per sales window",
+        "Autoscaling",
+        "Load balancing",
+        "Throttling by the waiting room"
+      ],
+      "tacticsInSlice": [
+        "Pre-warming per sales window via fn-prewarmer (min 1 instead of 2-3, warm at most 1 h)",
+        "Cloud Run autoscaling and scale to zero",
+        "Admission pacing by the waiting room (D-12)",
+        "Per-IP quota in the Gateway"
+      ],
+      "source": "Entrega-3 p.5 (originally Entrega-1 p.15-16)"
+    },
+    {
+      "id": "E-02",
+      "name": "Zero overselling under contention",
+      "attribute": "integrity (consistency)",
+      "stimulus": "2,000 concurrent reservations on a sector with 100 seats left, within 10 s.",
+      "response": "Each reservation is one local transaction with a conditional counter update; 100 succeed, the rest get sold out; instances x pool size kept below the DB connection limit.",
+      "measure": "Overselling = 0 in every load run; 0 seats held without a live reservation 60 s after; 0 connection-exhausted errors; p95 reservation <= 300 ms.",
+      "tacticsDesigned": [
+        "Serialized write in the data owner",
+        "Aggregate concurrency limit (instance cap x pool, window DB profile 100 connections)",
+        "Admission control upstream (signed pass + queue rate)"
+      ],
+      "tacticsInSlice": [
+        "Serialized conditional write in Inventory",
+        "Aggregate concurrency limit sized to 25 connections (ADR-0005)",
+        "Admission pacing by the queue (but pass not verified, D-07)",
+        "Concurrency test: 200 concurrent reservations -> exactly 10 (delivery-4.md)"
+      ],
+      "source": "Entrega-3 p.6 (originally Entrega-1 p.16)"
+    },
+    {
+      "id": "E-03",
+      "name": "Availability on zone failure",
+      "attribute": "availability",
+      "stimulus": "One availability zone stops responding during a sale.",
+      "response": "Compute spreads instances across zones and routes to healthy ones; health checks remove failing instances; DB fails over to its replica; passes stay valid because they are self-contained.",
+      "measure": ">= 99.9% successful requests during the event; recovery <= 60 s from detection; 0 confirmed reservations lost.",
+      "tacticsDesigned": [
+        "Health checks (liveness/readiness)",
+        "Multi-zone redundancy",
+        "Automatic DB failover"
+      ],
+      "tacticsInSlice": [
+        "Health checks /health/live and /health/ready",
+        "Cloud Run regional zone spreading (implicit)"
+      ],
+      "source": "Entrega-3 p.6-7 (originally Entrega-1 p.16)"
+    },
+    {
+      "id": "E-04",
+      "name": "Isolation between organizers (multi-tenant)",
+      "attribute": "isolation (performance)",
+      "stimulus": "Event A opens with 3,000 users while event B from another organizer sells normally.",
+      "response": "A is contained in its waiting room; B does not notice the peak.",
+      "measure": "B's p95 rises <= 20% over baseline; 0 errors in B attributable to A.",
+      "tacticsDesigned": [],
+      "tacticsInSlice": [],
+      "source": "Entrega-1 p.17 (dropped in Entrega-3 p.5, p.31)"
+    },
+    {
+      "id": "E-05",
+      "name": "Observability and incident response",
+      "attribute": "observability",
+      "stimulus": "Payment error rate exceeds 2% for one minute.",
+      "response": "Automatic alert on the payment error metric; operator opens the full trace of a failed purchase, including queue hops, because the correlation ID travels in message attributes.",
+      "measure": "Alert <= 60 s; full trace found <= 5 min; all requests and messages carry a correlation ID; DLQ with messages alerts <= 5 min.",
+      "tacticsDesigned": [
+        "Structured logging",
+        "Distributed tracing",
+        "Metrics and alerts (error rate, latency percentiles, DLQ depth)"
+      ],
+      "tacticsInSlice": [
+        "Structured JSON logs with correlation ID across HTTP and bus",
+        "DLQ alert via fn-dlq-monitor and a log-based alert (D-17)"
+      ],
+      "source": "Entrega-3 p.7-8 (originally Entrega-1 p.17)"
+    },
+    {
+      "id": "E-06",
+      "name": "Resilience to payment gateway failure",
+      "attribute": "resilience (availability)",
+      "stimulus": "Gateway returns 5xx or > 10 s latency for 5 minutes.",
+      "response": "Timeouts cut calls; circuit breaker opens after repeated failures and fails fast; retries use exponential backoff with jitter; buyer gets a clear message and can retry while the reservation lives; expiry is not extended and late payments are reversed.",
+      "measure": "Fail fast <= 50 ms with circuit open; 0 blocked threads/connections; 0 double charges; 0 errors propagated to queue and inventory; >= 95% of affected payments complete within 10 min after recovery.",
+      "tacticsDesigned": [
+        "Timeouts (0.5 s connect, 2 s response)",
+        "Circuit breaker (5 failures, 30 s recovery)",
+        "Retry with exponential backoff and jitter (3 retries, 200 ms-5 s)",
+        "Graceful degradation without expiry extension (ADR-03)"
+      ],
+      "tacticsInSlice": [
+        "Timeouts",
+        "Circuit breaker",
+        "Retry with backoff and jitter",
+        "No expiry extension",
+        "Fault injection in the mock (FAULT_MODE, make fault)"
+      ],
+      "source": "Entrega-3 p.8-9 (corrected from Entrega-1 p.17)"
+    },
+    {
+      "id": "E-07",
+      "name": "Cost between events",
+      "attribute": "cost efficiency",
+      "stimulus": "Two weeks with no active sales windows; only catalog and bought-ticket reads.",
+      "response": "Services scale to zero; the Edge load balancer and the in-memory store do not exist outside windows and are created/destroyed from IaC.",
+      "measure": "Idle cost <= 15 USD/month; total <= 50 USD/month including load tests (RN-01); cost per ticket measured monthly (RN-03).",
+      "tacticsDesigned": [
+        "Scale to zero",
+        "Per-window creation with IaC (Edge, in-memory store)",
+        "TTL on transient data (idempotency, inbox, outbox)"
+      ],
+      "tacticsInSlice": [
+        "Scale to zero",
+        "make up/down and stopping Cloud SQL (D-11)",
+        "Memorystore created per window (make redis-up, ADR-0001)"
+      ],
+      "source": "Entrega-3 p.9"
+    },
+    {
+      "id": "E-08",
+      "name": "Security of public ingress",
+      "attribute": "security",
+      "stimulus": "In 10 minutes an attacker sends 1,000 OWASP Top 10 payloads, 500 requests to protected routes without a valid token or with the wrong role, and direct calls to each logic service URL.",
+      "response": "WAF blocks known attacks at the edge; per-IP rate limiting returns 429; API Gateway validates signature, issuer, audience, expiry and role; payment webhook accepted only with a valid signature; logic services have internal ingress and require service identity; blocks are logged and alerted.",
+      "measure": ">= 95% of attack payloads rejected at the edge with 403; <= 1% legitimate requests blocked; 100% of unauthenticated/wrong-role protected requests get 401/403 at the Gateway; 0 logic services reachable from the Internet; alert <= 5 min when blocks > 100/min; TLS 1.2+.",
+      "tacticsDesigned": [
+        "Detect Intrusion (WAF)",
+        "Detect Service Denial (rate limiting)",
+        "Authenticate Actors",
+        "Authorize Actors (role per route, invoker role between services)",
+        "Limit Exposure (single public entry, internal ingress, private IPs)",
+        "Validate Input",
+        "Inform Actors (alerts)"
+      ],
+      "tacticsInSlice": [
+        "Private Cloud Run with IAM invoker",
+        "Gateway token check (HS256)",
+        "HMAC-signed webhook",
+        "Input validation against contracts",
+        "Per-IP quota in the Gateway"
+      ],
+      "source": "Entrega-3 p.9-10"
+    }
+  ],
+  "notes": "1) RF-24 (CAPTCHA), RF-13 (confirmation), RF-15 (signed tickets) and full RF-18 (register/login, managed IdP) are Must in Entrega 1/2 but absent or simulated in the slice; scope.md lists RF-13 and RF-15..RF-26 as out and does not mention RF-18 at all, although the simulated login only partially meets it. RF-06/RD-04 are the biggest deviation (pass never verified, D-07). 2) Entrega 3 reuses the IDs D-01..D-06 for design weaknesses; the repo's docs/plan/decisions.md uses D-01..D-21 for plan decisions. Same prefix, different meaning: cite carefully. 3) Entrega 3 ADR-03/ADR-04 are PDF-level ADRs; the repo's ADRs are ADR-0001..ADR-0007 in docs/adr/. 4) Entrega 3 rejects FaaS for the services (p.15); the slice adds two FaaS components (prewarmer, dlq-monitor) plus a mock function for Delivery 4 (D-21); delivery-4.md reconciles this. 5) Entrega 3 says outside windows queue positions live in the relational DB (p.16, p.22); the slice has no such fallback: the queue needs Memorystore, and its subscriptions exist only while Redis is on (infra/envs/dev/messaging.tf). 6) Entrega 3 deploys Firestore for Notifications; in the slice Firestore backs the payment mock instead. 7) Entrega 3 sizing (100-connection window profile, standby in zone b, Memorystore Standard with replica, gateway 2-20 and queue 3-20 window instances) is not applied; slice uses db-f1-micro with 25 connections and Memorystore Basic. 8) Entrega 2 lists four DA-xx-level async consumers (Issuance, Notifications) whose topics/queues are absent; only OrderPaid is published with no subscriber. 9) Entrega 2 page footers read 'Entrega 1' (template typo) and its title page is dated Sept 11, 2026; Entrega 1 team table lists five members (omits Juan Jose Medina Guerrero) while the cover lists six. 10) Entrega 1 E-06 (extend expiry during outage) was explicitly overturned by Entrega 3 ADR-03; the slice follows ADR-03. 11) No load tests were run, so E-01, E-03 and E-04 measures are not evidenced; Entrega 3 itself admits none of its section 6.2 values were verified."
+}

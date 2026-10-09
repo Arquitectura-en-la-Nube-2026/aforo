@@ -62,6 +62,8 @@ Node 24. Deadline: **Mon Oct 12, 2026**. Requirement-by-requirement map: `docs/p
 | Terraform                              | `infra/`                              |
 | Runbooks (up/down, demo)               | `docs/runbooks/`                      |
 | Decision records (implementation)      | `docs/adr/` (index in its README)     |
+| Map of everything, with the reasoning  | `docs/atlas/index.html` (Platform Atlas) |
+| What ran on `dev`, with numbers        | `docs/evidence/`                      |
 
 ## Commands
 

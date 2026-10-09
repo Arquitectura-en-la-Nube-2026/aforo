@@ -1,0 +1,1419 @@
+{
+  "components": [
+    {
+      "id": "fn-prewarmer",
+      "name": "prewarmer (FaaS #1)",
+      "kind": "function",
+      "layer": "faas",
+      "what": "Cloud Run function (2nd gen, Node 24) that raises service-level minimum instances of aforo-gateway and aforo-queue before a sales window opens and lowers them after.",
+      "serves": "Removes container cold start at the opening spike (E-01) while letting the entry path scale to zero the rest of the time (E-07). Buyers see nothing different.",
+      "why": [
+        {
+          "ref": "D-21",
+          "note": "Chosen as FaaS #1: realizes a designed Entrega 3 tactic instead of a component added only to comply."
+        },
+        {
+          "ref": "E-01",
+          "note": "Tactic 'pre-warming per sales window': opening time comes from the catalog's EventPublished."
+        },
+        {
+          "ref": "ADR-0004",
+          "note": "Amended by D-21: Terraform ignores gateway/queue service-level min_instance_count; this function owns it."
+        },
+        {
+          "ref": "ADR-0002",
+          "note": "No timers or sleeps: Cloud Tasks holds the delay, the queue is the state."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/functions.tf#L84-L163",
+        "infra/envs/dev/messaging.tf#L36-L39",
+        "infra/modules/cloud-function/main.tf",
+        "functions/prewarmer/README.md",
+        ".github/workflows/function-prewarmer.yml"
+      ],
+      "code": "functions/prewarmer",
+      "contracts": [
+        "contracts/openapi/prewarmer.yaml",
+        "contracts/events/event-published.v1.schema.json"
+      ],
+      "gcp": {
+        "type": "Cloud Run function (2nd gen)",
+        "name": "aforo-prewarmer",
+        "config": "nodejs24, entry prewarmer, 256M, min 0 / max 1, concurrency 1 (warm and cool never race), timeout 30 s, ingress ALLOW_ALL but invokers only aforo-pubsub-push and aforo-tasks-invoker; SA aforo-prewarmer-run (run.developer on gateway and queue only, actAs their SAs, enqueuer+viewer on prewarm-windows, actAs aforo-tasks-invoker). OIDC audience = its deterministic URL (SELF_URL). Env: TARGET_SERVICES aforo-gateway:1,aforo-queue:1, BASELINE_MIN_INSTANCES 0, PREWARM_LEAD_SECONDS 600, PREWARM_HOLD_SECONDS 3600, TASKS_QUEUE prewarm-windows.",
+        "state": "ACTIVE, revision aforo-prewarmer-00002-rap, last updated 2026-10-05T22:25Z (gcloud functions describe)."
+      },
+      "dependsOn": [
+        {
+          "id": "topic-event-published",
+          "how": "Push subscription prewarmer-event-published -> POST /events/prewarmer-event-published, audience = function URL; push, OIDC as aforo-pubsub-push, ack deadline 60 s, retry 10 s->60 s, 5 delivery attempts, then DLQ prewarmer-event-published-dlq."
+        },
+        {
+          "id": "tq-prewarm-windows",
+          "how": "Creates named tasks warm-{eventId}-{epoch(opens)} and cool-{eventId}-{epoch(closes)} targeting itself; lists pending tasks on cool (the queue is the state)."
+        },
+        {
+          "id": "svc-gateway",
+          "how": "Cloud Run Admin API PATCH ?updateMask=scaling.minInstanceCount on aforo-gateway (no new revision)."
+        },
+        {
+          "id": "svc-queue",
+          "how": "Cloud Run Admin API PATCH ?updateMask=scaling.minInstanceCount on aforo-queue (no new revision)."
+        },
+        {
+          "id": "lib-common",
+          "how": "@aforo/common core bundled into dist by esbuild (logger, envelope)."
+        },
+        {
+          "id": "ci-pipeline",
+          "how": "_function.yml uploads gs://aforo-dev-teamf-functions/prewarmer/<sha>.zip and runs gcloud functions deploy."
+        }
+      ],
+      "patterns": [
+        "event-driven consumer",
+        "delayed task scheduling",
+        "named-task deduplication",
+        "stateless function (queue as state)"
+      ],
+      "tactics": [
+        "E-01",
+        "E-07",
+        "E-05"
+      ],
+      "observed": "Oct 9 13:38-13:47 UTC: publish -> prewarm_scheduled in ~1 s, gateway and queue minimum 0->1 3 s after publishing (3 min before opening), first queue join at opening 550 ms vs 4 070 ms cold, back to 0 at the close (docs/evidence/e01-prewarming/README.md). Cold start 543 ms, warm 3-6 ms; route times 1.15 s / 1.61 s / 2.08 s (docs/evidence/faas-cold-start/README.md). Rejected the E-05 poison with 400 x5 (docs/evidence/e05-observability/README.md).",
+      "gotchas": [
+        "Seed event dates are fixed, so the prewarmer skips the seeded events (coolAt in the past) (docs/status/2026-10-08-done.md).",
+        "warmAt more than 30 days ahead (Cloud Tasks limit) is logged and skipped; relies on the seed re-emitting on make up.",
+        "Dev uses 1 warm instance per target, Entrega 3 §6.4 says 2 and 3.",
+        "Only covers sales windows: the first queue join after a pause still cold-starts (~3.2 s, issue #40).",
+        "Lab 5 FaaS phases table lives only in this README; the other two READMEs have a shorter 'FaaS constraints' table."
+      ]
+    },
+    {
+      "id": "fn-dlq-monitor",
+      "name": "dlq-monitor (FaaS #2)",
+      "kind": "function",
+      "layer": "faas",
+      "what": "Cloud Run function (2nd gen, CloudEvent) triggered by every <subscription>-dlq topic through Eventarc; writes one structured ERROR log line per dead letter and acks.",
+      "serves": "Makes a dead-lettered message visible: its log line feeds the log-based metric aforo/dead_letters and the alert 'aforo: message dead-lettered' (E-05). No functional scope.",
+      "why": [
+        {
+          "ref": "D-17",
+          "note": "Second FaaS component with no new functional scope; realizes 'DLQ with messages -> alert'."
+        },
+        {
+          "ref": "D-21",
+          "note": "Accepted D-17 as one of the two FaaS components; six DLQ topics."
+        },
+        {
+          "ref": "E-05",
+          "note": "Measure: DLQ alert <= 5 min."
+        },
+        {
+          "ref": "ADR-0005",
+          "note": "Retry 10 s->60 s and 5 attempts keep poison-to-DLQ at ~2-3 min so the alert fits in 5 min."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/functions.tf#L22-L82",
+        "infra/envs/dev/monitoring.tf",
+        "infra/modules/cloud-function/main.tf",
+        "functions/dlq-monitor/README.md",
+        ".github/workflows/function-dlq-monitor.yml"
+      ],
+      "code": "functions/dlq-monitor",
+      "contracts": [
+        "contracts/events/envelope.schema.json",
+        "contracts/events/README.md"
+      ],
+      "gcp": {
+        "type": "Cloud Run function (2nd gen) + Eventarc triggers",
+        "name": "aforo-dlq-monitor",
+        "config": "nodejs24, entry dlqMonitor, 256M, min 0 / max 5, concurrency 1, timeout 10 s, invoker only aforo-eventarc; SA aforo-dlq-monitor-run. One Eventarc trigger aforo-dlq-<subscription> per DLQ topic (type google.cloud.pubsub.topic.v1.messagePublished); Eventarc's own subscriptions use ack 10 s, retry 10 s->600 s, no DLQ.",
+        "state": "ACTIVE, revision aforo-dlq-monitor-00002-tut, updated 2026-10-05. 4 Eventarc triggers now (inventory-event-published, inventory-sales-rules, prewarmer-event-published, orders-reservation-expired); the 2 queue-* triggers are absent while Redis is off."
+      },
+      "dependsOn": [
+        {
+          "id": "dlq-inventory-event-published",
+          "how": "Eventarc trigger aforo-dlq-inventory-event-published (Pub/Sub messagePublished, push to function)."
+        },
+        {
+          "id": "dlq-prewarmer-event-published",
+          "how": "Eventarc trigger aforo-dlq-prewarmer-event-published."
+        },
+        {
+          "id": "dlq-queue-event-published",
+          "how": "Eventarc trigger aforo-dlq-queue-event-published (only while redis_enabled)."
+        },
+        {
+          "id": "dlq-inventory-sales-rules",
+          "how": "Eventarc trigger aforo-dlq-inventory-sales-rules."
+        },
+        {
+          "id": "dlq-queue-sales-rules",
+          "how": "Eventarc trigger aforo-dlq-queue-sales-rules (only while redis_enabled)."
+        },
+        {
+          "id": "dlq-orders-reservation-expired",
+          "how": "Eventarc trigger aforo-dlq-orders-reservation-expired."
+        },
+        {
+          "id": "obs-logging",
+          "how": "Writes severity=ERROR, event=dead_letter, subscription, type, messageId, correlationId, deliveryAttempt, producer."
+        },
+        {
+          "id": "lib-common",
+          "how": "Logger from @aforo/common inlined by esbuild."
+        }
+      ],
+      "patterns": [
+        "dead letter channel",
+        "event-triggered function",
+        "structured logging"
+      ],
+      "tactics": [
+        "E-05"
+      ],
+      "observed": "Oct 9 13:27-13:30 UTC (make poison TOPIC=aforo.catalog.event-published): 3 dead_letter lines 13:28:36 -> 13:28:46 (1 min 36 s after publish), incident at 13:30:30 (3 min 30 s after publish), email sent, auto-closed after 30 min 58 s (docs/evidence/e05-observability/README.md). Cold start 1 077 ms, warm 4-6 ms (docs/evidence/faas-cold-start/README.md).",
+      "gotchas": [
+        "Never re-publishes to the original topic; replay is manual.",
+        "Alert closes ~30 min later via auto_close (log-based count has no data when idle), not at once.",
+        "Logging twice is acceptable: the alert counts occurrences, not unique ids."
+      ]
+    },
+    {
+      "id": "fn-mock-payment-gateway",
+      "name": "mock-payment-gateway (test double)",
+      "kind": "function",
+      "layer": "faas",
+      "what": "Cloud Run function standing in for the external payment gateway (Wompi in the target design): creates payments, serves a Pay/Decline checkout page, sends an HMAC-signed webhook to Orders 2 s later through Cloud Tasks, and refunds.",
+      "serves": "Gives Orders' payment adapter (Anti-Corruption Layer + circuit breaker) a real network dependency, and supports fault injection for the E-06 demo. Not counted as a FaaS component.",
+      "why": [
+        {
+          "ref": "D-16",
+          "note": "Mock moved out of Orders as a function (supersedes D-09) so the ACL and breaker protect a real hop; 2 s webhook is a Cloud Tasks task, not a sleep."
+        },
+        {
+          "ref": "D-09",
+          "note": "Superseded: mock used to live inside Orders."
+        },
+        {
+          "ref": "D-21",
+          "note": "Still a function, but presented as a test double, not one of the two FaaS components."
+        },
+        {
+          "ref": "D-18",
+          "note": "FAULT_MODE none|error|timeout on POST /payments for the circuit-breaker demo."
+        },
+        {
+          "ref": "ADR-0004",
+          "note": "FAULT_MODE is the Terraform switch mock_fault_mode, changed only by make fault."
+        },
+        {
+          "ref": "ADR-0002",
+          "note": "Delayed webhook without background work: Cloud Tasks schedule instead of a sleep."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/functions.tf#L165-L240",
+        "infra/envs/dev/variables.tf#L33",
+        "Makefile#L116",
+        "functions/mock-payment-gateway/README.md",
+        ".github/workflows/function-mock-payment-gateway.yml"
+      ],
+      "code": "functions/mock-payment-gateway",
+      "contracts": [
+        "contracts/openapi/mock-payment-gateway.yaml"
+      ],
+      "gcp": {
+        "type": "Cloud Run function (2nd gen)",
+        "name": "aforo-mock-payment-gateway",
+        "config": "nodejs24, entry mockPaymentGateway, 256M, min 0 / max 5, concurrency 1, timeout 30 s; invokers aforo-orders SA (POST /payments, refunds), aforo-gateway SA (/mock-gateway/** checkout pages), aforo-tasks-invoker. SA aforo-mock-payment-gateway-run (datastore.user, enqueuer on payment-webhooks, actAs tasks invoker). Env: FAULT_MODE=var.mock_fault_mode, FAULT_DELAY_MS 5000, WEBHOOK_DELAY_SECONDS 2, ORDERS_WEBHOOK_URL <gateway>/api/v1/payments/webhook; secret WEBHOOK_SECRET.",
+        "state": "ACTIVE, revision aforo-mock-payment-gateway-00004-xec, updated 2026-10-09T03:31Z (the make fault MODE=none rollout), FAULT_MODE=none."
+      },
+      "dependsOn": [
+        {
+          "id": "data-firestore",
+          "how": "Collection payments, one document per paymentId (lazy client, roles/datastore.user)."
+        },
+        {
+          "id": "tq-payment-webhooks",
+          "how": "GET /checkout/{id}/complete creates task named notificationId, scheduleTime now+2 s, target POST /webhook-dispatch on itself."
+        },
+        {
+          "id": "svc-gateway",
+          "how": "/webhook-dispatch POSTs the signed notification (X-Signature sha256 HMAC) to ORDERS_WEBHOOK_URL = gateway /api/v1/payments/webhook, which routes to Orders; non-2xx -> non-2xx so Cloud Tasks retries."
+        },
+        {
+          "id": "infra-secrets",
+          "how": "WEBHOOK_SECRET from Secret Manager (shared with Orders)."
+        },
+        {
+          "id": "lib-common",
+          "how": "@aforo/common core bundled into dist/index.js (~11 kB); @google-cloud/* external."
+        }
+      ],
+      "patterns": [
+        "test double",
+        "anti-corruption layer target",
+        "fault injection",
+        "idempotency key",
+        "signed webhook",
+        "delayed task"
+      ],
+      "tactics": [
+        "E-06"
+      ],
+      "observed": "E-06 Oct 9 03:28-03:33 UTC: make fault MODE=timeout -> Orders breaker opened after 5 failures, fail-fast ~10 ms; after MODE=none the first half-open probe hit a cold instance of the new revision (2.8 s > 2 s timeout) and re-opened, then closed at 03:32:36 (docs/evidence/e06-circuit-breaker/README.md). Cold first POST /payments 2.8 s, warm 120 ms (docs/evidence/faas-cold-start/README.md). Oct 9 00:39 UTC: a gateway bug (#39) made Cloud Tasks deliver one webhook 5 times; Orders applied it once (docs/evidence/fails-well/README.md).",
+      "gotchas": [
+        "Misses the < 1 s cold-start target (2.8 s, lazy Firestore + Cloud Tasks clients); not tuned, it is a test double.",
+        "For the demo, warm the mock after make fault MODE=none or the half-open probe lands on a cold start.",
+        "A timed-out probe still created a payment that Orders never saw (the 'gateway did the work but we timed out' case).",
+        "FAULT_MODE applies only to POST /payments; never change it with gcloud (ADR-0004).",
+        "contracts/events/README.md#L85 says 'the mock has no database', but it uses Firestore (decided)."
+      ]
+    },
+    {
+      "id": "data-firestore",
+      "name": "Firestore (default) database",
+      "kind": "datastore",
+      "layer": "data",
+      "what": "Firestore Native database (default) in southamerica-east1 holding the mock payment gateway's payments collection.",
+      "serves": "Payment state of the mock (one document per paymentId, idempotent create keyed by a UUID derived from Idempotency-Key), so the function stays stateless.",
+      "why": [
+        {
+          "ref": "D-16",
+          "note": "Optional Firestore payments collection; adds a third persistence paradigm (document store); decided Firestore."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/functions.tf#L168-L180",
+        "infra/envs/dev/functions.tf#L223-L227",
+        "functions/mock-payment-gateway/src/firestore-repository.ts"
+      ],
+      "code": "functions/mock-payment-gateway/src/firestore-repository.ts",
+      "contracts": [],
+      "gcp": {
+        "type": "Firestore (Native mode)",
+        "name": "(default)",
+        "config": "location southamerica-east1, FIRESTORE_NATIVE; only aforo-mock-payment-gateway-run has roles/datastore.user.",
+        "state": "Exists: projects/aforo-dev-teamf/databases/(default), southamerica-east1, FIRESTORE_NATIVE (gcloud firestore databases list). Not switched off by make down."
+      },
+      "dependsOn": [],
+      "patterns": [
+        "document store",
+        "state externalization"
+      ],
+      "tactics": [],
+      "observed": "",
+      "gotchas": [
+        "Not reset by make down; payments accumulate across demos."
+      ]
+    },
+    {
+      "id": "topic-event-published",
+      "name": "aforo.catalog.event-published",
+      "kind": "topic",
+      "layer": "async",
+      "what": "Pub/Sub topic aforo.catalog.event-published: the EventPublished fact, produced by catalog through its transactional outbox.",
+      "serves": "Tells consumers an event went on sale: inventory builds sectors/availability, queue builds its projection, prewarmer schedules the warm window.",
+      "why": [
+        {
+          "ref": "ADR-0002",
+          "note": "Published only by OutboxPublisher.flush() after commit plus the 1-minute housekeeping flush."
+        },
+        {
+          "ref": "ADR-0005",
+          "note": "Each push subscription: retry 10 s->60 s, 5 attempts, own DLQ."
+        },
+        {
+          "ref": "D-21",
+          "note": "Added the prewarmer-event-published subscription."
+        },
+        {
+          "ref": "ADR-0001",
+          "note": "queue-event-published exists only while Memorystore is on."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/messaging.tf#L22-L48",
+        "infra/modules/pubsub-topic/main.tf",
+        "contracts/events/README.md#L24-L47"
+      ],
+      "code": "",
+      "contracts": [
+        "contracts/events/envelope.schema.json",
+        "contracts/events/event-published.v1.schema.json"
+      ],
+      "gcp": {
+        "type": "Pub/Sub topic",
+        "name": "aforo.catalog.event-published",
+        "config": "publisher IAM: catalog runtime SA only. Subscriptions: inventory-event-published, prewarmer-event-published, queue-event-published (only while redis_enabled). Envelope: messageId, type, version, occurredAt, correlationId, producer, data; type and correlationId also as attributes.",
+        "state": "Exists; subscriptions now: inventory-event-published, prewarmer-event-published (queue-event-published absent, Redis off)."
+      },
+      "dependsOn": [],
+      "patterns": [
+        "publish-subscribe",
+        "transactional outbox",
+        "envelope"
+      ],
+      "tactics": [],
+      "observed": "Poison target for E-05 on Oct 9: dead-lettered through all 3 subscriptions (docs/evidence/e05-observability/README.md). Drove E-01 on Oct 9 (docs/evidence/e01-prewarming/README.md).",
+      "gotchas": [
+        "Messages published while queue-* subscriptions don't exist are lost for the queue; make redis-up re-runs the seed to rebuild.",
+        "Order with SalesRulesConfigured is not guaranteed; projections upsert."
+      ]
+    },
+    {
+      "id": "topic-sales-rules-configured",
+      "name": "aforo.catalog.sales-rules-configured",
+      "kind": "topic",
+      "layer": "async",
+      "what": "Pub/Sub topic aforo.catalog.sales-rules-configured: the SalesRulesConfigured fact, produced by catalog through its transactional outbox.",
+      "serves": "Carries sales rules (window, per-person limit) to inventory and queue.",
+      "why": [
+        {
+          "ref": "ADR-0002",
+          "note": "Published only by OutboxPublisher.flush() after commit plus the 1-minute housekeeping flush."
+        },
+        {
+          "ref": "ADR-0005",
+          "note": "Each push subscription: retry 10 s->60 s, 5 attempts, own DLQ."
+        },
+        {
+          "ref": "ADR-0001",
+          "note": "queue-sales-rules exists only while Memorystore is on."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/messaging.tf#L50-L72",
+        "infra/modules/pubsub-topic/main.tf",
+        "contracts/events/README.md#L24-L47"
+      ],
+      "code": "",
+      "contracts": [
+        "contracts/events/envelope.schema.json",
+        "contracts/events/sales-rules-configured.v1.schema.json"
+      ],
+      "gcp": {
+        "type": "Pub/Sub topic",
+        "name": "aforo.catalog.sales-rules-configured",
+        "config": "publisher IAM: catalog runtime SA only. Subscriptions: inventory-sales-rules, queue-sales-rules (only while redis_enabled). Envelope: messageId, type, version, occurredAt, correlationId, producer, data; type and correlationId also as attributes.",
+        "state": "Exists; subscriptions now: inventory-sales-rules (queue-sales-rules absent, Redis off)."
+      },
+      "dependsOn": [],
+      "patterns": [
+        "publish-subscribe",
+        "transactional outbox",
+        "envelope"
+      ],
+      "tactics": [],
+      "observed": "",
+      "gotchas": [
+        "Emitted in the same transaction as EventPublished but may arrive first."
+      ]
+    },
+    {
+      "id": "topic-reservation-expired",
+      "name": "aforo.inventory.reservation-expired",
+      "kind": "topic",
+      "layer": "async",
+      "what": "Pub/Sub topic aforo.inventory.reservation-expired: the ReservationExpired fact, produced by inventory through its transactional outbox.",
+      "serves": "Tells Orders a reservation expired so the order moves PENDING_PAYMENT -> EXPIRED.",
+      "why": [
+        {
+          "ref": "ADR-0002",
+          "note": "Published only by OutboxPublisher.flush() after commit plus the 1-minute housekeeping flush."
+        },
+        {
+          "ref": "ADR-0005",
+          "note": "Each push subscription: retry 10 s->60 s, 5 attempts, own DLQ."
+        },
+        {
+          "ref": "ADR-0003",
+          "note": "Fact emitted by the expiry (task or sweep)."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/messaging.tf#L74-L88",
+        "infra/modules/pubsub-topic/main.tf",
+        "contracts/events/README.md#L24-L47"
+      ],
+      "code": "",
+      "contracts": [
+        "contracts/events/envelope.schema.json",
+        "contracts/events/reservation-expired.v1.schema.json"
+      ],
+      "gcp": {
+        "type": "Pub/Sub topic",
+        "name": "aforo.inventory.reservation-expired",
+        "config": "publisher IAM: inventory runtime SA only. Subscriptions: orders-reservation-expired. Envelope: messageId, type, version, occurredAt, correlationId, producer, data; type and correlationId also as attributes.",
+        "state": "Exists; subscription orders-reservation-expired ACTIVE."
+      },
+      "dependsOn": [],
+      "patterns": [
+        "publish-subscribe",
+        "transactional outbox",
+        "envelope"
+      ],
+      "tactics": [],
+      "observed": "Oct 9 13:20 UTC: 10 ReservationExpired pushes accepted by orders (204), same correlationId as the order creation (docs/evidence/reliability-expiry/README.md).",
+      "gotchas": []
+    },
+    {
+      "id": "topic-order-paid",
+      "name": "aforo.orders.order-paid",
+      "kind": "topic",
+      "layer": "async",
+      "what": "Pub/Sub topic aforo.orders.order-paid: the OrderPaid fact, produced by orders through its transactional outbox.",
+      "serves": "Fact that an order was paid; published but not consumed in this slice (future ticket issuance).",
+      "why": [
+        {
+          "ref": "ADR-0002",
+          "note": "Published only by OutboxPublisher.flush() after commit plus the 1-minute housekeeping flush."
+        },
+        {
+          "ref": "ADR-0005",
+          "note": "Each push subscription: retry 10 s->60 s, 5 attempts, own DLQ."
+        },
+        {
+          "ref": "D-21",
+          "note": "Ticket issuance consuming OrderPaid rejected for now (new functional scope, RF-15)."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/messaging.tf#L90-L98",
+        "infra/modules/pubsub-topic/main.tf",
+        "contracts/events/README.md#L24-L47"
+      ],
+      "code": "",
+      "contracts": [
+        "contracts/events/envelope.schema.json",
+        "contracts/events/order-paid.v1.schema.json"
+      ],
+      "gcp": {
+        "type": "Pub/Sub topic",
+        "name": "aforo.orders.order-paid",
+        "config": "publisher IAM: orders runtime SA only. Subscriptions: none. Envelope: messageId, type, version, occurredAt, correlationId, producer, data; type and correlationId also as attributes.",
+        "state": "Exists, no subscriptions."
+      },
+      "dependsOn": [],
+      "patterns": [
+        "publish-subscribe",
+        "transactional outbox",
+        "envelope"
+      ],
+      "tactics": [],
+      "observed": "Oct 9 00:39 UTC: one OrderPaid published despite 5 webhook deliveries (docs/evidence/fails-well/README.md).",
+      "gotchas": [
+        "Nobody consumes it (CLAUDE.md known gap); messages are not retained by any subscription.",
+        "No DLQ (no subscriptions)."
+      ]
+    },
+    {
+      "id": "dlq-inventory-event-published",
+      "name": "inventory-event-published-dlq",
+      "kind": "dlq",
+      "layer": "async",
+      "what": "Dead-letter topic of push subscription inventory-event-published (svc-inventory).",
+      "serves": "Takes a message after 5 failed deliveries so it neither blocks nor is lost; dlq-monitor turns it into an ERROR log and the alert.",
+      "why": [
+        {
+          "ref": "ADR-0005",
+          "note": "One DLQ per subscription, 5 attempts, backoff 10 s->60 s."
+        },
+        {
+          "ref": "D-17",
+          "note": "Read by dlq-monitor."
+        },
+        {
+          "ref": "E-05",
+          "note": "DLQ with messages -> alert <= 5 min."
+        }
+      ],
+      "declaredIn": [
+        "infra/modules/pubsub-topic/main.tf#L20-L24",
+        "infra/modules/pubsub-topic/main.tf#L47-L50",
+        "infra/envs/dev/functions.tf#L49-L82"
+      ],
+      "code": "",
+      "contracts": [
+        "contracts/events/envelope.schema.json"
+      ],
+      "gcp": {
+        "type": "Pub/Sub topic (dead letter)",
+        "name": "inventory-event-published-dlq",
+        "config": "Pub/Sub service agent has publisher on it and subscriber on the source subscription. Only reader: Eventarc trigger aforo-dlq-inventory-event-published -> aforo-dlq-monitor.",
+        "state": "Exists, Eventarc trigger active."
+      },
+      "dependsOn": [
+        {
+          "id": "topic-event-published",
+          "how": "Dead-letter target of subscription inventory-event-published (max_delivery_attempts 5)."
+        }
+      ],
+      "patterns": [
+        "dead letter channel"
+      ],
+      "tactics": [
+        "E-05"
+      ],
+      "observed": "Oct 9 13:28:36 UTC: received the E-05 poison after 5 attempts; first dead_letter line (docs/evidence/e05-observability/README.md).",
+      "gotchas": []
+    },
+    {
+      "id": "dlq-prewarmer-event-published",
+      "name": "prewarmer-event-published-dlq",
+      "kind": "dlq",
+      "layer": "async",
+      "what": "Dead-letter topic of push subscription prewarmer-event-published (fn-prewarmer).",
+      "serves": "Takes a message after 5 failed deliveries so it neither blocks nor is lost; dlq-monitor turns it into an ERROR log and the alert.",
+      "why": [
+        {
+          "ref": "ADR-0005",
+          "note": "One DLQ per subscription, 5 attempts, backoff 10 s->60 s."
+        },
+        {
+          "ref": "D-17",
+          "note": "Read by dlq-monitor."
+        },
+        {
+          "ref": "E-05",
+          "note": "DLQ with messages -> alert <= 5 min."
+        }
+      ],
+      "declaredIn": [
+        "infra/modules/pubsub-topic/main.tf#L20-L24",
+        "infra/modules/pubsub-topic/main.tf#L47-L50",
+        "infra/envs/dev/functions.tf#L49-L82"
+      ],
+      "code": "",
+      "contracts": [
+        "contracts/events/envelope.schema.json"
+      ],
+      "gcp": {
+        "type": "Pub/Sub topic (dead letter)",
+        "name": "prewarmer-event-published-dlq",
+        "config": "Pub/Sub service agent has publisher on it and subscriber on the source subscription. Only reader: Eventarc trigger aforo-dlq-prewarmer-event-published -> aforo-dlq-monitor.",
+        "state": "Exists, Eventarc trigger active."
+      },
+      "dependsOn": [
+        {
+          "id": "topic-event-published",
+          "how": "Dead-letter target of subscription prewarmer-event-published (max_delivery_attempts 5)."
+        }
+      ],
+      "patterns": [
+        "dead letter channel"
+      ],
+      "tactics": [
+        "E-05"
+      ],
+      "observed": "Oct 9 13:28:45 UTC: received the E-05 poison (docs/evidence/e05-observability/README.md).",
+      "gotchas": []
+    },
+    {
+      "id": "dlq-queue-event-published",
+      "name": "queue-event-published-dlq",
+      "kind": "dlq",
+      "layer": "async",
+      "what": "Dead-letter topic of push subscription queue-event-published (svc-queue).",
+      "serves": "Takes a message after 5 failed deliveries so it neither blocks nor is lost; dlq-monitor turns it into an ERROR log and the alert.",
+      "why": [
+        {
+          "ref": "ADR-0005",
+          "note": "One DLQ per subscription, 5 attempts, backoff 10 s->60 s."
+        },
+        {
+          "ref": "D-17",
+          "note": "Read by dlq-monitor."
+        },
+        {
+          "ref": "E-05",
+          "note": "DLQ with messages -> alert <= 5 min."
+        },
+        {
+          "ref": "ADR-0001",
+          "note": "Exists only while Memorystore is on (redis_enabled)."
+        }
+      ],
+      "declaredIn": [
+        "infra/modules/pubsub-topic/main.tf#L20-L24",
+        "infra/modules/pubsub-topic/main.tf#L47-L50",
+        "infra/envs/dev/functions.tf#L49-L82"
+      ],
+      "code": "",
+      "contracts": [
+        "contracts/events/envelope.schema.json"
+      ],
+      "gcp": {
+        "type": "Pub/Sub topic (dead letter)",
+        "name": "queue-event-published-dlq",
+        "config": "Pub/Sub service agent has publisher on it and subscriber on the source subscription. Only reader: Eventarc trigger aforo-dlq-queue-event-published -> aforo-dlq-monitor.",
+        "state": "Absent now (Redis off)."
+      },
+      "dependsOn": [
+        {
+          "id": "topic-event-published",
+          "how": "Dead-letter target of subscription queue-event-published (max_delivery_attempts 5)."
+        }
+      ],
+      "patterns": [
+        "dead letter channel"
+      ],
+      "tactics": [
+        "E-05"
+      ],
+      "observed": "Oct 9 13:28:46 UTC: received the E-05 poison while Redis was on (docs/evidence/e05-observability/README.md).",
+      "gotchas": [
+        "Created and destroyed with the queue subscriptions by make redis-up / redis-down."
+      ]
+    },
+    {
+      "id": "dlq-inventory-sales-rules",
+      "name": "inventory-sales-rules-dlq",
+      "kind": "dlq",
+      "layer": "async",
+      "what": "Dead-letter topic of push subscription inventory-sales-rules (svc-inventory).",
+      "serves": "Takes a message after 5 failed deliveries so it neither blocks nor is lost; dlq-monitor turns it into an ERROR log and the alert.",
+      "why": [
+        {
+          "ref": "ADR-0005",
+          "note": "One DLQ per subscription, 5 attempts, backoff 10 s->60 s."
+        },
+        {
+          "ref": "D-17",
+          "note": "Read by dlq-monitor."
+        },
+        {
+          "ref": "E-05",
+          "note": "DLQ with messages -> alert <= 5 min."
+        }
+      ],
+      "declaredIn": [
+        "infra/modules/pubsub-topic/main.tf#L20-L24",
+        "infra/modules/pubsub-topic/main.tf#L47-L50",
+        "infra/envs/dev/functions.tf#L49-L82"
+      ],
+      "code": "",
+      "contracts": [
+        "contracts/events/envelope.schema.json"
+      ],
+      "gcp": {
+        "type": "Pub/Sub topic (dead letter)",
+        "name": "inventory-sales-rules-dlq",
+        "config": "Pub/Sub service agent has publisher on it and subscriber on the source subscription. Only reader: Eventarc trigger aforo-dlq-inventory-sales-rules -> aforo-dlq-monitor.",
+        "state": "Exists, Eventarc trigger active."
+      },
+      "dependsOn": [
+        {
+          "id": "topic-sales-rules-configured",
+          "how": "Dead-letter target of subscription inventory-sales-rules (max_delivery_attempts 5)."
+        }
+      ],
+      "patterns": [
+        "dead letter channel"
+      ],
+      "tactics": [
+        "E-05"
+      ],
+      "observed": "",
+      "gotchas": []
+    },
+    {
+      "id": "dlq-queue-sales-rules",
+      "name": "queue-sales-rules-dlq",
+      "kind": "dlq",
+      "layer": "async",
+      "what": "Dead-letter topic of push subscription queue-sales-rules (svc-queue).",
+      "serves": "Takes a message after 5 failed deliveries so it neither blocks nor is lost; dlq-monitor turns it into an ERROR log and the alert.",
+      "why": [
+        {
+          "ref": "ADR-0005",
+          "note": "One DLQ per subscription, 5 attempts, backoff 10 s->60 s."
+        },
+        {
+          "ref": "D-17",
+          "note": "Read by dlq-monitor."
+        },
+        {
+          "ref": "E-05",
+          "note": "DLQ with messages -> alert <= 5 min."
+        },
+        {
+          "ref": "ADR-0001",
+          "note": "Exists only while Memorystore is on (redis_enabled)."
+        }
+      ],
+      "declaredIn": [
+        "infra/modules/pubsub-topic/main.tf#L20-L24",
+        "infra/modules/pubsub-topic/main.tf#L47-L50",
+        "infra/envs/dev/functions.tf#L49-L82"
+      ],
+      "code": "",
+      "contracts": [
+        "contracts/events/envelope.schema.json"
+      ],
+      "gcp": {
+        "type": "Pub/Sub topic (dead letter)",
+        "name": "queue-sales-rules-dlq",
+        "config": "Pub/Sub service agent has publisher on it and subscriber on the source subscription. Only reader: Eventarc trigger aforo-dlq-queue-sales-rules -> aforo-dlq-monitor.",
+        "state": "Absent now (Redis off)."
+      },
+      "dependsOn": [
+        {
+          "id": "topic-sales-rules-configured",
+          "how": "Dead-letter target of subscription queue-sales-rules (max_delivery_attempts 5)."
+        }
+      ],
+      "patterns": [
+        "dead letter channel"
+      ],
+      "tactics": [
+        "E-05"
+      ],
+      "observed": "",
+      "gotchas": [
+        "Created and destroyed with the queue subscriptions by make redis-up / redis-down."
+      ]
+    },
+    {
+      "id": "dlq-orders-reservation-expired",
+      "name": "orders-reservation-expired-dlq",
+      "kind": "dlq",
+      "layer": "async",
+      "what": "Dead-letter topic of push subscription orders-reservation-expired (svc-orders).",
+      "serves": "Takes a message after 5 failed deliveries so it neither blocks nor is lost; dlq-monitor turns it into an ERROR log and the alert.",
+      "why": [
+        {
+          "ref": "ADR-0005",
+          "note": "One DLQ per subscription, 5 attempts, backoff 10 s->60 s."
+        },
+        {
+          "ref": "D-17",
+          "note": "Read by dlq-monitor."
+        },
+        {
+          "ref": "E-05",
+          "note": "DLQ with messages -> alert <= 5 min."
+        }
+      ],
+      "declaredIn": [
+        "infra/modules/pubsub-topic/main.tf#L20-L24",
+        "infra/modules/pubsub-topic/main.tf#L47-L50",
+        "infra/envs/dev/functions.tf#L49-L82"
+      ],
+      "code": "",
+      "contracts": [
+        "contracts/events/envelope.schema.json"
+      ],
+      "gcp": {
+        "type": "Pub/Sub topic (dead letter)",
+        "name": "orders-reservation-expired-dlq",
+        "config": "Pub/Sub service agent has publisher on it and subscriber on the source subscription. Only reader: Eventarc trigger aforo-dlq-orders-reservation-expired -> aforo-dlq-monitor.",
+        "state": "Exists, Eventarc trigger active."
+      },
+      "dependsOn": [
+        {
+          "id": "topic-reservation-expired",
+          "how": "Dead-letter target of subscription orders-reservation-expired (max_delivery_attempts 5)."
+        }
+      ],
+      "patterns": [
+        "dead letter channel"
+      ],
+      "tactics": [
+        "E-05"
+      ],
+      "observed": "",
+      "gotchas": []
+    },
+    {
+      "id": "tq-reservation-expiry",
+      "name": "reservation-expiry",
+      "kind": "task-queue",
+      "layer": "async",
+      "what": "Cloud Tasks queue that delivers each reservation's expiry at its TTL.",
+      "serves": "Expires unpaid reservations on time and returns seats without any process running between requests; Pub/Sub has no delayed delivery.",
+      "why": [
+        {
+          "ref": "ADR-0003",
+          "note": "Enqueue after commit can be lost; Inventory's 1-minute housekeeping sweep is the safety net."
+        },
+        {
+          "ref": "ADR-0002",
+          "note": "No timers: Cloud Tasks holds the delay."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/tasks.tf#L9-L17",
+        "infra/envs/dev/tasks.tf#L37-L48",
+        "contracts/events/README.md#L73-L87",
+        "services/inventory/src/reservations/expiry-scheduler.ts"
+      ],
+      "code": "services/inventory/src/reservations/expiry-scheduler.ts",
+      "contracts": [
+        "contracts/openapi/inventory.yaml"
+      ],
+      "gcp": {
+        "type": "Cloud Tasks queue",
+        "name": "reservation-expiry",
+        "config": "max_attempts 5, max_doublings 3; default rate (500/s, burst 100, 1000 concurrent), backoff 0.1 s->3600 s. Producer inventory SA (enqueuer + actAs aforo-tasks-invoker). Task name = reservationId (dedup, 409 ALREADY_EXISTS ignored), ETA = now + reservationTtlSeconds, target POST /internal/v1/reservations/{id}/expire on inventory with OIDC of aforo-tasks-invoker.",
+        "state": "RUNNING (gcloud tasks queues list)."
+      },
+      "dependsOn": [
+        {
+          "id": "svc-inventory",
+          "how": "Created by inventory after commit; delivers POST /internal/v1/reservations/{id}/expire back to inventory (OIDC aforo-tasks-invoker)."
+        }
+      ],
+      "patterns": [
+        "delayed delivery",
+        "named-task deduplication",
+        "safety-net sweep"
+      ],
+      "tactics": [],
+      "observed": "Oct 9 13:19:59-13:20:08 UTC: 10 expiry tasks delivered, all 200, each within seconds of expiresAt (2.8 s in the example); seats 0 -> 10, orders EXPIRED (docs/evidence/reliability-expiry/README.md).",
+      "gotchas": [
+        "Locally there is no emulator; a ~20-line setTimeout dispatcher stands in."
+      ]
+    },
+    {
+      "id": "tq-payment-webhooks",
+      "name": "payment-webhooks",
+      "kind": "task-queue",
+      "layer": "async",
+      "what": "Cloud Tasks queue the mock payment gateway uses to send its webhook 2 s after checkout completion.",
+      "serves": "Delayed, retried, signed payment notification to Orders without a sleep or background work in the function.",
+      "why": [
+        {
+          "ref": "D-16",
+          "note": "The 2 s delayed webhook goes through Cloud Tasks queue payment-webhooks."
+        },
+        {
+          "ref": "ADR-0002",
+          "note": "Work only inside a request."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/tasks.tf#L19-L26",
+        "infra/envs/dev/functions.tf#L229-L240",
+        "contracts/events/README.md#L78"
+      ],
+      "code": "functions/mock-payment-gateway/src/scheduler.ts",
+      "contracts": [
+        "contracts/openapi/mock-payment-gateway.yaml"
+      ],
+      "gcp": {
+        "type": "Cloud Tasks queue",
+        "name": "payment-webhooks",
+        "config": "max_attempts 5; default rate and backoff (0.1 s->3600 s, 16 doublings). Producer mock SA. Task name = notificationId (dedup), schedule now + 2 s, target POST /webhook-dispatch on the mock with OIDC of aforo-tasks-invoker.",
+        "state": "RUNNING."
+      },
+      "dependsOn": [
+        {
+          "id": "fn-mock-payment-gateway",
+          "how": "Created in GET /checkout/{id}/complete; delivers POST /webhook-dispatch to the same function, which forwards to Orders via the gateway."
+        }
+      ],
+      "patterns": [
+        "delayed delivery",
+        "retry",
+        "named-task deduplication"
+      ],
+      "tactics": [],
+      "observed": "Oct 9 00:39 UTC: gateway bug #39 turned Orders' 200 into 500, Cloud Tasks retried the same notification 5 times; Orders applied it once (docs/evidence/fails-well/README.md).",
+      "gotchas": [
+        "No sweep: if the enqueue fails the mock shows an error page (no database recovery)."
+      ]
+    },
+    {
+      "id": "tq-prewarm-windows",
+      "name": "prewarm-windows",
+      "kind": "task-queue",
+      "layer": "async",
+      "what": "Cloud Tasks queue holding the warm and cool tasks of each sales window for the prewarmer.",
+      "serves": "Holds the time until warm/cool and is the prewarmer's only state (cool checks other pending windows).",
+      "why": [
+        {
+          "ref": "D-21",
+          "note": "Pre-warmer schedules two named tasks per event."
+        },
+        {
+          "ref": "E-01",
+          "note": "Pre-warming per sales window."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/tasks.tf#L28-L35",
+        "infra/envs/dev/functions.tf#L149-L163",
+        "contracts/events/README.md#L79"
+      ],
+      "code": "functions/prewarmer/src/handlers.ts",
+      "contracts": [
+        "contracts/openapi/prewarmer.yaml"
+      ],
+      "gcp": {
+        "type": "Cloud Tasks queue",
+        "name": "prewarm-windows",
+        "config": "max_attempts 5; default rate and backoff. Producer prewarmer SA (enqueuer + viewer). Tasks warm-{eventId}-{epoch(opens)} at max(salesOpensAt - 600 s, now) -> POST /windows/warm; cool-{eventId}-{epoch(closes)} at min(salesClosesAt, salesOpensAt + 3600 s) -> POST /windows/cool; OIDC aforo-tasks-invoker, audience = function URL.",
+        "state": "RUNNING."
+      },
+      "dependsOn": [
+        {
+          "id": "fn-prewarmer",
+          "how": "Created by and delivered back to the prewarmer (/windows/warm, /windows/cool)."
+        }
+      ],
+      "patterns": [
+        "delayed delivery",
+        "queue as state",
+        "named-task deduplication"
+      ],
+      "tactics": [
+        "E-01"
+      ],
+      "observed": "Oct 9 13:38:38 warm task ran at once, cool task at 13:46:36; no tasks left afterwards (docs/evidence/e01-prewarming/README.md).",
+      "gotchas": [
+        "Cloud Tasks cannot schedule more than 30 days ahead."
+      ]
+    },
+    {
+      "id": "sched-catalog-housekeeping",
+      "name": "aforo-catalog-housekeeping",
+      "kind": "scheduler",
+      "layer": "async",
+      "what": "Cloud Scheduler job calling POST /internal/v1/housekeeping on aforo-catalog every minute.",
+      "serves": "Periodic work without pollers: outbox flush of EventPublished / SalesRulesConfigured.",
+      "why": [
+        {
+          "ref": "ADR-0002",
+          "note": "Periodic work goes into /internal/v1/housekeeping called by Cloud Scheduler, since Cloud Run throttles CPU between requests."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/scheduler.tf#L9-L31"
+      ],
+      "code": "services/catalog",
+      "contracts": [
+        "contracts/openapi/catalog.yaml"
+      ],
+      "gcp": {
+        "type": "Cloud Scheduler job",
+        "name": "aforo-catalog-housekeeping",
+        "config": "schedule * * * * * Etc/UTC, POST, attempt_deadline 60 s, no retries (next minute is the retry), OIDC aforo-scheduler audience aforo-catalog, paused = !env_on.",
+        "state": "PAUSED (dev off)."
+      },
+      "dependsOn": [
+        {
+          "id": "svc-catalog",
+          "how": "POST /internal/v1/housekeeping (OIDC aforo-scheduler)."
+        }
+      ],
+      "patterns": [
+        "scheduled housekeeping",
+        "outbox relay"
+      ],
+      "tactics": [],
+      "observed": "",
+      "gotchas": [
+        "Paused by make down, resumed by make up (env_on)."
+      ]
+    },
+    {
+      "id": "sched-orders-housekeeping",
+      "name": "aforo-orders-housekeeping",
+      "kind": "scheduler",
+      "layer": "async",
+      "what": "Cloud Scheduler job calling POST /internal/v1/housekeeping on aforo-orders every minute.",
+      "serves": "Periodic work without pollers: outbox flush of OrderPaid.",
+      "why": [
+        {
+          "ref": "ADR-0002",
+          "note": "Periodic work goes into /internal/v1/housekeeping called by Cloud Scheduler, since Cloud Run throttles CPU between requests."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/scheduler.tf#L9-L31"
+      ],
+      "code": "services/orders",
+      "contracts": [
+        "contracts/openapi/orders.yaml"
+      ],
+      "gcp": {
+        "type": "Cloud Scheduler job",
+        "name": "aforo-orders-housekeeping",
+        "config": "schedule * * * * * Etc/UTC, POST, attempt_deadline 60 s, no retries (next minute is the retry), OIDC aforo-scheduler audience aforo-orders, paused = !env_on.",
+        "state": "PAUSED (dev off)."
+      },
+      "dependsOn": [
+        {
+          "id": "svc-orders",
+          "how": "POST /internal/v1/housekeeping (OIDC aforo-scheduler)."
+        }
+      ],
+      "patterns": [
+        "scheduled housekeeping",
+        "outbox relay"
+      ],
+      "tactics": [],
+      "observed": "",
+      "gotchas": [
+        "Paused by make down, resumed by make up (env_on)."
+      ]
+    },
+    {
+      "id": "sched-inventory-housekeeping",
+      "name": "aforo-inventory-housekeeping",
+      "kind": "scheduler",
+      "layer": "async",
+      "what": "Cloud Scheduler job calling POST /internal/v1/housekeeping on aforo-inventory every minute.",
+      "serves": "Periodic work without pollers: outbox flush of ReservationExpired and the expiry sweep of ACTIVE reservations past expires_at (ADR-0003).",
+      "why": [
+        {
+          "ref": "ADR-0002",
+          "note": "Periodic work goes into /internal/v1/housekeeping called by Cloud Scheduler, since Cloud Run throttles CPU between requests."
+        },
+        {
+          "ref": "ADR-0003",
+          "note": "Sweep is the safety net for lost expiry tasks."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/scheduler.tf#L9-L31"
+      ],
+      "code": "services/inventory",
+      "contracts": [
+        "contracts/openapi/inventory.yaml"
+      ],
+      "gcp": {
+        "type": "Cloud Scheduler job",
+        "name": "aforo-inventory-housekeeping",
+        "config": "schedule * * * * * Etc/UTC, POST, attempt_deadline 60 s, no retries (next minute is the retry), OIDC aforo-scheduler audience aforo-inventory, paused = !env_on.",
+        "state": "PAUSED (dev off)."
+      },
+      "dependsOn": [
+        {
+          "id": "svc-inventory",
+          "how": "POST /internal/v1/housekeeping (OIDC aforo-scheduler)."
+        }
+      ],
+      "patterns": [
+        "scheduled housekeeping",
+        "outbox relay"
+      ],
+      "tactics": [],
+      "observed": "",
+      "gotchas": [
+        "Paused by make down, resumed by make up (env_on)."
+      ]
+    },
+    {
+      "id": "job-migrate",
+      "name": "Migrate jobs (aforo-catalog-migrate, aforo-orders-migrate, aforo-inventory-migrate)",
+      "kind": "job",
+      "layer": "delivery",
+      "what": "One Cloud Run job per Postgres service running node dist/db/migrate.js in the service image, with the service's SA, env, secrets and Cloud SQL socket.",
+      "serves": "Applies expand-only migrations with the new image before the new revision exists, so no revision serves against an older schema.",
+      "why": [
+        {
+          "ref": "D-19",
+          "note": "Migrations are expand/contract and run as a Cloud Run job before the traffic shift."
+        },
+        {
+          "ref": "ADR-0004",
+          "note": "Terraform owns the job config; CI owns the image."
+        }
+      ],
+      "declaredIn": [
+        "infra/modules/cloud-run-service/variables.tf#L89-L93",
+        "infra/modules/cloud-run-service/main.tf#L177-L260",
+        "infra/envs/dev/services.tf#L86-L89",
+        "infra/envs/dev/services.tf#L144",
+        "infra/envs/dev/services.tf#L182",
+        ".github/workflows/_service.yml#L115-L129"
+      ],
+      "code": "services/<svc>/src/db",
+      "contracts": [],
+      "gcp": {
+        "type": "Cloud Run jobs",
+        "name": "aforo-catalog-migrate, aforo-orders-migrate, aforo-inventory-migrate",
+        "config": "task_count 1, parallelism 1, max_retries 0, timeout 300 s, 1 CPU / 512Mi; placeholder image until first CI deploy (ignore_changes on image).",
+        "state": "All 3 exist; last runs succeeded: catalog 2026-10-08 23:29 UTC, inventory 2026-10-08 23:57 UTC, orders 2026-10-09 14:01 UTC."
+      },
+      "dependsOn": [
+        {
+          "id": "data-cloudsql",
+          "how": "Cloud SQL socket volume /cloudsql, DATABASE_URL secret."
+        },
+        {
+          "id": "db-catalog",
+          "how": "aforo-catalog-migrate"
+        },
+        {
+          "id": "db-orders",
+          "how": "aforo-orders-migrate"
+        },
+        {
+          "id": "db-inventory",
+          "how": "aforo-inventory-migrate"
+        },
+        {
+          "id": "ci-pipeline",
+          "how": "Step 'Migrate with the new image': gcloud run jobs update --image <digest> for every aforo-<svc>-* job, then execute aforo-<svc>-migrate --wait."
+        }
+      ],
+      "patterns": [
+        "expand/contract migrations",
+        "immutable artifact"
+      ],
+      "tactics": [],
+      "observed": "",
+      "gotchas": [
+        "Needs Cloud SQL on (make up); a deploy while dev is off fails at this step."
+      ]
+    },
+    {
+      "id": "job-seed",
+      "name": "aforo-catalog-seed",
+      "kind": "job",
+      "layer": "delivery",
+      "what": "Cloud Run job running node dist/seed/seed.js in the catalog image: idempotent catalog seed.",
+      "serves": "Loads demo events and re-emits EventPublished / SalesRulesConfigured through the outbox so the queue projection and inventory are rebuilt (after make up / make redis-up).",
+      "why": [
+        {
+          "ref": "ADR-0001",
+          "note": "Queue subscriptions are recreated with Memorystore; the seed re-emits both facts to rebuild the projection."
+        },
+        {
+          "ref": "ADR-0004",
+          "note": "Run only through make."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/services.tf#L86-L89",
+        "Makefile#L86-L98",
+        "Makefile#L68-L79",
+        ".github/workflows/_service.yml#L115-L129"
+      ],
+      "code": "services/catalog/src/seed",
+      "contracts": [],
+      "gcp": {
+        "type": "Cloud Run job",
+        "name": "aforo-catalog-seed",
+        "config": "Same template as migrate (1 task, 0 retries, 300 s); image updated by catalog CI; make seed retries execute 3 times, 30 s apart.",
+        "state": "Exists; last run succeeded 2026-10-09 13:07 UTC."
+      },
+      "dependsOn": [
+        {
+          "id": "db-catalog",
+          "how": "Writes events and outbox rows."
+        },
+        {
+          "id": "topic-event-published",
+          "how": "Re-emits EventPublished via outbox flush."
+        },
+        {
+          "id": "topic-sales-rules-configured",
+          "how": "Re-emits SalesRulesConfigured via outbox flush."
+        }
+      ],
+      "patterns": [
+        "idempotent seed"
+      ],
+      "tactics": [],
+      "observed": "",
+      "gotchas": [
+        "Seed dates are fixed, so the prewarmer skips the seeded events.",
+        "Skipped with a warning if catalog was never deployed (placeholder image)."
+      ]
+    },
+    {
+      "id": "obs-dead-letter-alert",
+      "name": "aforo: message dead-lettered",
+      "kind": "observability",
+      "layer": "platform",
+      "what": "Log-based metric aforo/dead_letters on dlq-monitor's event=dead_letter lines plus an alert policy (count > 0 in 60 s) with email channels.",
+      "serves": "Turns a dead letter into an incident and email within 5 min (E-05).",
+      "why": [
+        {
+          "ref": "D-17",
+          "note": "Metric and alert policy in Terraform."
+        },
+        {
+          "ref": "E-05",
+          "note": "DLQ alert <= 5 min."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/monitoring.tf"
+      ],
+      "code": "",
+      "contracts": [],
+      "gcp": {
+        "type": "Cloud Monitoring alert policy + log-based metric",
+        "name": "aforo/dead_letters",
+        "config": "ALIGN_COUNT over 60 s, threshold > 0, auto_close 1800 s, email channels from var.alert_emails.",
+        "state": "unknown (not listed; out of the allowed command set for this task)."
+      },
+      "dependsOn": [
+        {
+          "id": "fn-dlq-monitor",
+          "how": "Counts its event=dead_letter log lines."
+        }
+      ],
+      "patterns": [
+        "log-based alerting"
+      ],
+      "tactics": [
+        "E-05"
+      ],
+      "observed": "Oct 9: incident at 13:30:30 UTC, 3 min 30 s after publishing; recovered after 30 min 58 s (docs/evidence/e05-observability/README.md).",
+      "gotchas": [
+        "Closes via auto_close, not when the count drops to 0."
+      ]
+    },
+    {
+      "kind": "service",
+      "layer": "core",
+      "what": "",
+      "serves": "",
+      "why": [],
+      "declaredIn": [],
+      "code": "services/catalog",
+      "contracts": [],
+      "gcp": {
+        "type": "Cloud Run service",
+        "name": "aforo-catalog",
+        "config": "",
+        "state": ""
+      },
+      "patterns": [],
+      "tactics": [],
+      "observed": "",
+      "gotchas": [],
+      "id": "svc-catalog",
+      "name": "Catalog",
+      "dependsOn": [
+        {
+          "id": "topic-event-published",
+          "how": "Publishes EventPublished via transactional outbox (flush after commit + housekeeping)."
+        },
+        {
+          "id": "topic-sales-rules-configured",
+          "how": "Publishes SalesRulesConfigured via transactional outbox, same transaction as EventPublished."
+        }
+      ]
+    },
+    {
+      "kind": "service",
+      "layer": "core",
+      "what": "",
+      "serves": "",
+      "why": [],
+      "declaredIn": [],
+      "code": "services/inventory",
+      "contracts": [],
+      "gcp": {
+        "type": "Cloud Run service",
+        "name": "aforo-inventory",
+        "config": "",
+        "state": ""
+      },
+      "patterns": [],
+      "tactics": [],
+      "observed": "",
+      "gotchas": [],
+      "id": "svc-inventory",
+      "name": "Inventory",
+      "dependsOn": [
+        {
+          "id": "topic-event-published",
+          "how": "Push subscription inventory-event-published -> POST /internal/v1/events/inventory-event-published, audience aforo-inventory; push, OIDC as aforo-pubsub-push, ack deadline 60 s, retry 10 s->60 s, 5 delivery attempts, then DLQ inventory-event-published-dlq."
+        },
+        {
+          "id": "topic-sales-rules-configured",
+          "how": "Push subscription inventory-sales-rules -> POST /internal/v1/events/inventory-sales-rules, audience aforo-inventory; push, OIDC as aforo-pubsub-push, ack deadline 60 s, retry 10 s->60 s, 5 delivery attempts, then DLQ inventory-sales-rules-dlq."
+        },
+        {
+          "id": "topic-reservation-expired",
+          "how": "Publishes ReservationExpired via transactional outbox."
+        },
+        {
+          "id": "tq-reservation-expiry",
+          "how": "Enqueues a task named reservationId at now + TTL after commit (EXPIRY_SCHEDULER=cloud-tasks); receives POST /internal/v1/reservations/{id}/expire."
+        }
+      ]
+    },
+    {
+      "kind": "service",
+      "layer": "core",
+      "what": "",
+      "serves": "",
+      "why": [],
+      "declaredIn": [],
+      "code": "services/orders",
+      "contracts": [],
+      "gcp": {
+        "type": "Cloud Run service",
+        "name": "aforo-orders",
+        "config": "",
+        "state": ""
+      },
+      "patterns": [],
+      "tactics": [],
+      "observed": "",
+      "gotchas": [],
+      "id": "svc-orders",
+      "name": "Orders",
+      "dependsOn": [
+        {
+          "id": "topic-reservation-expired",
+          "how": "Push subscription orders-reservation-expired -> POST /internal/v1/events/orders-reservation-expired, audience aforo-orders; push, OIDC as aforo-pubsub-push, ack deadline 60 s, retry 10 s->60 s, 5 delivery attempts, then DLQ orders-reservation-expired-dlq."
+        },
+        {
+          "id": "topic-order-paid",
+          "how": "Publishes OrderPaid via transactional outbox (no consumer)."
+        },
+        {
+          "id": "fn-mock-payment-gateway",
+          "how": "POST /payments and refunds through the payment adapter (ACL, timeouts, retry, circuit breaker), OIDC."
+        }
+      ]
+    },
+    {
+      "kind": "service",
+      "layer": "core",
+      "what": "",
+      "serves": "",
+      "why": [],
+      "declaredIn": [],
+      "code": "services/queue",
+      "contracts": [],
+      "gcp": {
+        "type": "Cloud Run service",
+        "name": "aforo-queue",
+        "config": "",
+        "state": ""
+      },
+      "patterns": [],
+      "tactics": [],
+      "observed": "",
+      "gotchas": [],
+      "id": "svc-queue",
+      "name": "Queue",
+      "dependsOn": [
+        {
+          "id": "topic-event-published",
+          "how": "Push subscription queue-event-published -> POST /internal/v1/events/queue-event-published, audience aforo-queue; push, OIDC as aforo-pubsub-push, ack deadline 60 s, retry 10 s->60 s, 5 delivery attempts, then DLQ queue-event-published-dlq. Exists only while redis_enabled (ADR-0001)."
+        },
+        {
+          "id": "topic-sales-rules-configured",
+          "how": "Push subscription queue-sales-rules -> POST /internal/v1/events/queue-sales-rules, audience aforo-queue; push, OIDC as aforo-pubsub-push, ack deadline 60 s, retry 10 s->60 s, 5 delivery attempts, then DLQ queue-sales-rules-dlq. Exists only while redis_enabled (ADR-0001)."
+        }
+      ]
+    }
+  ],
+  "decisions": [],
+  "notes": "Service entries svc-catalog, svc-inventory, svc-orders, svc-queue are STUBS carrying only async dependsOn edges (subscriptions, outbox publishing, task queues); merge their dependsOn into the full service components and ignore their empty fields.\nConflicts: (1) contracts/events/README.md#L85 says the mock 'has no database', but functions.tf and the mock README use Firestore collection payments (decided). (2) contracts/events/README.md#L47 notes the plan's infra table says 6 topics vs 4 business topics. (3) Only functions/prewarmer/README.md has the Lab 5 phases table; dlq-monitor and mock READMEs have a shorter 'FaaS constraints' table. (4) dlq-monitor README says 'max 5 instances' which matches the module default.\nLive state (Oct 9, dev off, Redis off): topics = 4 business + 4 DLQ (queue-event-published-dlq and queue-sales-rules-dlq absent); 4 push subscriptions ACTIVE + 4 Eventarc subscriptions; 3 task queues RUNNING with default rate limits; 3 housekeeping jobs PAUSED; 3 functions ACTIVE (mock FAULT_MODE=none); 4 Cloud Run jobs, last runs succeeded; Firestore (default) exists.\nEventarc creates its own subscriptions on DLQ topics (ack 10 s, backoff 10 s->600 s, no DLQ); these are not in Terraform directly but via google_eventarc_trigger.\nThe function source object shown by describe is gcf's copy (aforo-<name>/function-source.zip), not the CI <sha>.zip path; prewarmer and dlq-monitor were last deployed Oct 5 (docs/status/2026-10-08-done.md).\nobs-dead-letter-alert gcp.state is unknown: alert policies were not listed (not in the allowed command list)."
+}

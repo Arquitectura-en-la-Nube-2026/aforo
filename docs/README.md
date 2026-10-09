@@ -7,6 +7,9 @@
 | [architecture/](architecture/) | Overview, flows, glossary, target vs. slice | Structure changes |
 | [adr/](adr/) | Decisions taken *during* implementation that others must know | A non-trivial choice affects more than one unit |
 | [runbooks/](runbooks/) | Operating the environment and running the demo | Operations change |
+| [atlas/](atlas/README.md) | Platform Atlas: interactive map of every component, its decisions, GCP setup, dependencies and results ([index.html](atlas/index.html)) | A component, decision or result changes (rebuild with `build.py`) |
+| [evidence/](evidence/README.md) | What each Delivery 4 scenario did on `dev`: runs, numbers, screenshots, log queries | A scenario is re-run |
+| [status/](status/) | What is done and what is missing for Delivery 4 | Daily while delivering |
 | [design/](design/) | Original design deliverables (Spanish, read-only reference) | Never |
 
 Normative contracts are **not** here: they live in [`../contracts/`](../contracts/).
