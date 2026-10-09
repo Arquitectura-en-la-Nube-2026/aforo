@@ -20,7 +20,8 @@ times.
 | Each consumer rejects the bad message (`400`), nothing is applied | ✅ inventory, queue and prewarmer, 5 deliveries each, `400` in 2–6 ms when warm |
 | Retried with backoff, then moved to the DLQ after 5 attempts | ✅ attempts at ~13, ~13, ~17 and ~25 s apart; DLQ at `deliveryAttempt: 5` |
 | `dlq-monitor` logs `event=dead_letter` with the `correlationId` and the DLQ topic | ✅ 3 lines, 13:28:36 → 13:28:46 (1 min 36 s after publishing) |
-| Alert opens an incident + email ≤ 5 min | ⏳ screenshots pending (`01-incident.png`, `02-email.png`) |
+| Alert opens an incident ≤ 5 min | ✅ incident open at **13:30:30**: 1 min 54 s after the first dead letter, **3 min 30 s** after publishing ([01-incident.png](01-incident.png); the console shows 08:30:30 UTC-5) |
+| Email to the team | ⏳ to confirm (`02-email.png`) |
 
 ### Timeline (UTC)
 
@@ -34,6 +35,7 @@ times.
 | 13:28:36.429 | `dlq-monitor`: `dead_letter`, `inventory-event-published-dlq`, `deliveryAttempt: 5` (cold start) |
 | 13:28:45.811 | `dlq-monitor`: `dead_letter`, `prewarmer-event-published-dlq` |
 | 13:28:46.105 | `dlq-monitor`: `dead_letter`, `queue-event-published-dlq` |
+| 13:30:30 | Incident **aforo: message dead-lettered** opens (metric `logging/user/aforo/dead_letters`) |
 
 A bad message costs five cheap `400`s per consumer and then leaves the subscription.
 
@@ -61,6 +63,12 @@ resource.labels.service_name=("aforo-inventory" OR "aforo-queue" OR "aforo-prewa
 httpRequest.status=400
 timestamp>="2026-10-09T13:26:50Z" timestamp<="2026-10-09T13:29:00Z"
 ```
+
+## For the live demo
+
+The incident takes about 2 minutes after the dead letters to appear (log ingestion, then the
+60 s alignment window); the whole loop is ~3.5 min. Publish the poison first, show the `400`s and
+the `dead_letter` lines in Cloud Logging, then open Alerting.
 
 ## Rerun
 
