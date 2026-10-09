@@ -2,7 +2,7 @@
 
 > Owner: Julián (Platform) · Contract: [contracts/openapi/prewarmer.yaml](../../contracts/openapi/prewarmer.yaml)
 > Consumes: `EventPublished` ([contracts/events](../../contracts/events/README.md))
-> Decision: D-21 · Status: implemented (handlers, tests, Terraform, CI); cold start not measured yet
+> Decision: D-21 · Status: implemented and demonstrated on dev (Oct 9, [evidence](../../docs/evidence/e01-prewarming/))
 
 Realizes the Entrega 3 E-01 tactic **"pre-warming per sales window"**: the entry path already has
 instances running when a sale opens, because the opening time comes from the catalog. It fixes
@@ -58,7 +58,7 @@ demo window, `PREWARM_HOLD_SECONDS`). Terraform does **not** manage these servic
 | State externalization | None kept: the window lives in the event payload and in the pending tasks |
 | Idempotency | Named tasks dedupe scheduling; `warm` raises to a target (repeatable); `cool` re-checks the queue |
 | Resilience and limits | Timeout 30 s; `max_instance_count = 1`, concurrency 1, so warm/cool never race |
-| Cold start | No SDK clients: Cloud Run Admin and Cloud Tasks REST calls through `google-auth-library`, created lazily in module scope; single bundled file. Target < 1 s; measure and record here |
+| Cold start | No SDK clients: Cloud Run Admin and Cloud Tasks REST calls through `google-auth-library`, created lazily in module scope; single bundled file. Target < 1 s; measured on dev: **543 ms** cold, 3–6 ms warm ([numbers](../../docs/evidence/faas-cold-start/)) |
 
 Delays are never `sleep`s: Cloud Tasks holds the time.
 

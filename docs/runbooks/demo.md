@@ -63,7 +63,8 @@ dead-letters. While Memorystore is off only `inventory-event-published` and
    `cool-<eventId>-<epoch>` (at the close) on `prewarm-windows`.
 3. Show `aforo-gateway` and `aforo-queue` minimum instances go to 1 within seconds:
    ```bash
-   gcloud run services describe aforo-gateway --region southamerica-east1 --format='value(scaling.minInstanceCount)'
+   gcloud run services describe aforo-gateway --region southamerica-east1 \
+     --format='value(metadata.annotations."run.googleapis.com/minScale")'   # empty = 0
    gcloud tasks list --queue prewarm-windows --location southamerica-east1
    ```
 4. At the close they go back to 0; the `prewarm_applied` logs show `from`/`to` for each step.

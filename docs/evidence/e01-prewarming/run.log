@@ -1,0 +1,9 @@
+2026-10-09T13:35:26.330Z create -> 201 id=132102d2-8b65-58fb-a282-52be3f1be868 status=DRAFT opens=2026-10-09T13:38:26.000Z closes=2026-10-09T13:43:26.000Z
+2026-10-09T13:35:26.574Z sales-rules -> 200
+2026-10-09T13:35:26.830Z publish -> 400 status=400
+2026-10-09T13:38:27.704Z join at opening -> 400 MALFORMED_REQUEST latencyMs=337
+--- rerun after fixing the script (empty JSON body) ---
+2026-10-09T13:38:36.094Z create -> 201 id=e1a5f8cf-6166-52af-a20e-6e8b65454ccd status=DRAFT opens=2026-10-09T13:41:36.000Z closes=2026-10-09T13:46:36.000Z
+2026-10-09T13:38:36.338Z sales-rules -> 200
+2026-10-09T13:38:36.936Z publish -> 200 status=PUBLISHED
+2026-10-09T13:41:38.013Z join at opening -> 201 WAITING latencyMs=550

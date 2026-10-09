@@ -1,7 +1,7 @@
 # dlq-monitor — FaaS #2 (Pub/Sub-triggered)
 
 > Owner: Julián (Platform / observability) · Consumes: DLQ topics of [contracts/events](../../contracts/events/README.md)
-> Decision: D-17, accepted by D-21 · Status: implemented (handler, tests, Terraform, CI); cold start not measured yet
+> Decision: D-17, accepted by D-21 · Status: implemented and demonstrated on dev (Oct 9, [E-05 evidence](../../docs/evidence/e05-observability/))
 
 Realizes the E-05 tactic "a DLQ with messages raises an alert" without new functional scope.
 Triggered (Eventarc / Pub/Sub trigger) by each of the six `<subscription>-dlq` topics (the two
@@ -33,7 +33,7 @@ message dead-letters only through `inventory-event-published`; that is enough fo
 
 | Constraint | How it is handled |
 | ---------- | ----------------- |
-| Cold start | Tiny handler, only the logger; irrelevant for an async alert path, still measured |
+| Cold start | Tiny handler, only the logger; irrelevant for an async alert path, still measured: **1 077 ms** cold, 4–6 ms warm on dev ([numbers](../../docs/evidence/faas-cold-start/)) |
 | Execution time | Timeout 10 s; work is a single log write |
 | Idempotency | Logging twice is acceptable; the alert counts occurrences, not unique ids |
 

@@ -43,9 +43,9 @@ protects against a real network dependency. When Wompi arrives, only Orders' ada
 
 | Constraint | How it is handled |
 | ---------- | ----------------- |
-| Cold start | Single bundled file, no framework, Firestore/Tasks clients lazily created in module scope. Target < 1 s; measure and record here |
+| Cold start | Single bundled file, no framework, Firestore/Tasks clients lazily created in module scope. Target < 1 s. Measured on dev: the first `POST /payments` on a fresh instance took **2.8 s** (lazy Firestore and Cloud Tasks clients), warm 120 ms ([numbers](../../docs/evidence/faas-cold-start/)); a test double, so not tuned further |
 | Execution time | Timeout 30 s. The 2 s delay is **not** a sleep: it's a Cloud Tasks schedule |
-| Bundle | `npm run build` bundles our code (and `@aforo/common` core) into `dist/index.js` (~11 kB). `@google-cloud/*` stay external (gRPC SDKs load proto files from disk and cannot be bundled); they are installed from `package.json` at deploy. **Cold start not measured yet**: measure after the first deploy and record it here |
+| Bundle | `npm run build` bundles our code (and `@aforo/common` core) into `dist/index.js` (~11 kB). `@google-cloud/*` stay external (gRPC SDKs load proto files from disk and cannot be bundled); they are installed from `package.json` at deploy. Cold start measured: see the row above |
 | Deployment | CI uploads `<sha>.zip` and runs `gcloud functions deploy --source gs://…/<sha>.zip` (no env flags; config is Terraform's). All-at-once, rollback with `update-traffic` (ADR-0004) |
 | Statelessness | No module-level state except SDK clients |
 
