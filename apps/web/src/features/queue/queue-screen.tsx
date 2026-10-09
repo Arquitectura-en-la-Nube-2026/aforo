@@ -93,7 +93,9 @@ export function QueueScreen({ eventId }: { eventId: string }) {
       {queue.phase === 'admitted' && (
         <div className="stub">
           <div className="grid gap-4 p-8 text-center">
-            <TicketCheck className="mx-auto size-10 text-success" aria-hidden />
+            <span className="mx-auto grid size-16 place-items-center rounded-full bg-citrus text-primary-strong shadow-[0_0_0_6px_var(--color-citrus-soft)]">
+              <TicketCheck className="size-8" aria-hidden />
+            </span>
             <h1 ref={headingRef} tabIndex={-1} className="text-4xl font-bold outline-none">
               {es.queue.admittedTitle}
             </h1>
@@ -191,7 +193,7 @@ function Waiting({
         <h1 className="text-lg font-semibold text-muted">{es.queue.yourPosition}</h1>
         <p
           key={position}
-          className="num animate-rise font-display text-[clamp(5.5rem,26vw,9rem)] font-extrabold leading-none tracking-tight text-primary"
+          className="num animate-rise font-display text-[clamp(5.5rem,26vw,9rem)] font-extrabold leading-none tracking-tight brand-text"
         >
           {position}
         </p>
@@ -205,7 +207,7 @@ function Waiting({
           className="mx-auto h-2 w-full max-w-xs overflow-hidden rounded-full bg-paper"
         >
           <div
-            className="h-full rounded-full bg-primary transition-[width] duration-700"
+            className="brand-gradient h-full rounded-full transition-[width] duration-700"
             style={{ width: `${Math.max(4, progress)}%` }}
           />
         </div>
