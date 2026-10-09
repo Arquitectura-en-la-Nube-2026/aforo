@@ -36,6 +36,7 @@ times.
 | 13:28:45.811 | `dlq-monitor`: `dead_letter`, `prewarmer-event-published-dlq` |
 | 13:28:46.105 | `dlq-monitor`: `dead_letter`, `queue-event-published-dlq` |
 | 13:30:30 | Incident **aforo: message dead-lettered** opens (metric `logging/user/aforo/dead_letters`); email sent |
+| ~14:01 | Incident closes by `auto_close` ("Alert recovered", duration 30 min 58 s) |
 
 A bad message costs five cheap `400`s per consumer and then leaves the subscription.
 
@@ -76,4 +77,7 @@ the `dead_letter` lines in Cloud Logging, then open Alerting.
 make poison TOPIC=aforo.catalog.event-published   # ~2 min to the DLQ; the alert follows
 ```
 
-The incident closes by itself 30 min after the last dead letter (`auto_close`).
+The incident closed by itself after **30 min 58 s** (email "Alert recovered … is missing data",
+[03-recovered.png](03-recovered.png)): a log-based count has no data points when nothing is
+dead-lettered, so the condition never reads "0" and the policy's `auto_close = 1800s` ends it. A
+new dead letter in the meantime would keep the same incident open rather than open a second one.
