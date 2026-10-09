@@ -1,0 +1,14 @@
+2026-10-09T13:11:54.853Z --- E-02 via gateway: 200 buyers x 1 seat, Mesa (10 seats) ---
+2026-10-09T13:11:55.454Z available before: 10
+2026-10-09T13:11:58.217Z 200 buyers logged in
+2026-10-09T13:12:04.254Z burst 2026-10-09T13:11:58.219Z .. 2026-10-09T13:12:04.253Z
+2026-10-09T13:12:04.254Z answers: {"201":10,"409 SOLD_OUT":190}
+2026-10-09T13:12:04.256Z created=10 (expected 10); client latency p50=5098 ms p95=5932 ms max=6018 ms
+2026-10-09T13:12:04.608Z available after: 0; oversold=0
+2026-10-09T13:21:30.909Z --- E-02 via gateway (run=1791552090909, buyers e02-1791552090909-<i>@aforo.dev): 200 buyers x 1 seat, Mesa (10 seats), spread over 10000 ms ---
+2026-10-09T13:21:31.384Z available before: 10
+2026-10-09T13:21:34.068Z 200 buyers logged in
+2026-10-09T13:21:44.267Z burst 2026-10-09T13:21:34.070Z .. 2026-10-09T13:21:44.266Z
+2026-10-09T13:21:44.268Z answers: {"201":10,"409 SOLD_OUT":190}
+2026-10-09T13:21:44.270Z created=10 (expected 10); client latency p50=238 ms p95=542 ms max=1135 ms
+2026-10-09T13:21:44.534Z available after: 0; oversold=0
