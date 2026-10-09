@@ -17,7 +17,7 @@ The checklist of what is still to collect is [../status/2026-10-08-missing.md](.
 | [fails-well/](fails-well/) | Sold out, limit, idempotent order, duplicate webhook | ✅ Oct 9 |
 | [deployment/](deployment/) | Blue/green, migrations and rollback | ✅ Oct 9 |
 | [faas-cold-start/](faas-cold-start/) | Cold start and execution time per function | ✅ Oct 9 |
-| `e07-cost/` | Cost follows use | — |
+| [e07-cost/](e07-cost/) | Cost follows use | ⚠️ billing screenshots pending |
 
 Conventions: screenshots as `NN-what.png`; times in UTC; project `aforo-dev-teamf`. Log queries
 are written so they can be pasted into Cloud Logging as they are.
