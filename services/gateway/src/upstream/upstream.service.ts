@@ -110,13 +110,13 @@ export class UpstreamService {
       reply.status(302).header("location", location).header("cache-control", "no-store").send();
       return;
     }
-    // A success with no Content-Type is legitimate only if its body turns out empty: Orders answers
-    // a handled webhook with a bare 200, and turning that into a 500 would make Cloud Tasks retry it.
-    const maybeEmptySuccess = contentType === "" && upstream.status >= 200 && upstream.status < 300;
-    const legitimate =
-      JSON_CONTENT.test(contentType) ||
-      (call.browserPages === true && upstream.status === 200 && HTML_CONTENT.test(contentType)) ||
-      maybeEmptySuccess;
+    // A non-JSON success is legitimate only if its body turns out empty: Orders answers a handled
+    // webhook with a bare 200, which Express labels text/html, and turning that into a 500 makes
+    // Cloud Tasks retry it. Google's front end never answers an IAM rejection with a 2xx.
+    const browserPage = call.browserPages === true && upstream.status === 200 && HTML_CONTENT.test(contentType);
+    const maybeEmptySuccess =
+      !JSON_CONTENT.test(contentType) && !browserPage && upstream.status >= 200 && upstream.status < 300;
+    const legitimate = JSON_CONTENT.test(contentType) || browserPage || maybeEmptySuccess;
     if (!legitimate) {
       await upstream.body?.cancel().catch(() => undefined);
       this.logger.write("ERROR", `${target.name}.unexpected_answer`, { status: upstream.status, contentType });
@@ -137,7 +137,13 @@ export class UpstreamService {
       throw new DomainError("INTERNAL", `${target.name} service unavailable`);
     }
     reply.status(upstream.status);
-    if (contentType) reply.header("content-type", contentType);
+    if (maybeEmptySuccess) {
+      // No body and no type: the text/html label described nothing, and Fastify would label an
+      // empty Buffer application/octet-stream.
+      reply.send();
+      return;
+    }
+    reply.header("content-type", contentType);
     const replayed = upstream.headers.get("idempotent-replayed");
     if (replayed) reply.header("idempotent-replayed", replayed);
     if (call.browserPages) reply.header("cache-control", "no-store");

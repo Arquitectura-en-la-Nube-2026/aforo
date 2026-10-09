@@ -184,7 +184,7 @@ test("the webhook needs no session and reaches Orders byte for byte with its sig
   assert.equal(rejected.json().code, "INVALID_SIGNATURE");
 });
 
-test("a handled webhook's bare 200 (no body, no Content-Type) passes through, never as a 500", async () => {
+test("a handled webhook's bare 200 (no body, with or without a Content-Type) passes through, never as a 500", async () => {
   orders.respond = (request, response) => {
     request.resume();
     request.on("end", () => {
@@ -200,6 +200,24 @@ test("a handled webhook's bare 200 (no body, no Content-Type) passes through, ne
   });
   assert.equal(handled.statusCode, 200);
   assert.equal(handled.body, "");
+
+  // What Express actually sends for it in dev: an empty 200 labeled text/html.
+  orders.respond = (request, response) => {
+    request.resume();
+    request.on("end", () => {
+      response.writeHead(200, { "content-type": "text/html; charset=utf-8", "content-length": "0" });
+      response.end();
+    });
+  };
+  const labeled = await inject({
+    method: "POST",
+    url: "/api/v1/payments/webhook",
+    payload: "{}",
+    headers: { "content-type": "application/json", "x-signature": "sha256=00" },
+  });
+  assert.equal(labeled.statusCode, 200, "Cloud Tasks would retry a 500");
+  assert.equal(labeled.body, "");
+  assert.equal(labeled.headers["content-type"], undefined);
 
   orders.respond = (request, response) => {
     request.resume();

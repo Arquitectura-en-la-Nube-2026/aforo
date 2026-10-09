@@ -77,8 +77,9 @@ a request at another route of the queue service (`/internal/v1/**` in particular
 Same rules as the Catalog and queue routes: the upstream path is rebuilt from a fixed operation and
 UUIDs (`src/upstream/upstream.service.ts`), identity headers come only from the validated session,
 the browser's `Authorization` is never forwarded, and `X-Correlation-Id` always is. JSON and
-problem+json answers pass through with `Idempotent-Replayed`; anything else (an IAM HTML 403) is a
-500 `INTERNAL`.
+problem+json answers pass through with `Idempotent-Replayed`; a 2xx with an empty body passes
+through bodiless whatever its label (Orders answers a handled webhook with an empty 200 that Express
+labels `text/html`); anything else (an IAM HTML 403) is a 500 `INTERNAL`.
 
 - **Orders.** Writes forward `Idempotency-Key`, `X-Queue-Pass` (logged by Orders, never verified,
   D-07) and the body exactly as received. The list keeps its query string. Timeout **15 s**, not the
