@@ -1,0 +1,708 @@
+{
+ "components": [
+  {
+   "id": "data-cloudsql",
+   "name": "Cloud SQL Postgres (aforo-pg)",
+   "kind": "datastore",
+   "layer": "data",
+   "what": "One shared Postgres 17 instance with one database and one user per service (catalog, orders, inventory). Started and stopped by the env_on switch.",
+   "serves": "Durable state of catalog, orders and inventory (each in its own logical DB: db-catalog, db-orders, db-inventory), including their outbox/inbox/idempotency tables.",
+   "why": [
+    {
+     "ref": "ADR-0005",
+     "note": "db-f1-micro allows 25 connections (22 usable); instance caps x DB_POOL_MAX are budgeted to 19 of 22."
+    },
+    {
+     "ref": "ADR-0004",
+     "note": "activation_policy follows env_on (ALWAYS/NEVER), changed only through make up/down."
+    },
+    {
+     "ref": "E-07",
+     "note": "Stopped instance bills disk only, so dev costs close to nothing when off."
+    }
+   ],
+   "declaredIn": [
+    "infra/envs/dev/database.tf",
+    "infra/modules/cloud-sql/main.tf",
+    "infra/README.md#L91"
+   ],
+   "code": "infra/modules/cloud-sql",
+   "contracts": [],
+   "gcp": {
+    "type": "Cloud SQL for PostgreSQL",
+    "name": "aforo-pg (aforo-dev-teamf:southamerica-east1:aforo-pg)",
+    "config": "POSTGRES_17, db-f1-micro, ENTERPRISE edition, ZONAL, 10 GB PD_HDD no autoresize, no backups, max_connections=25, public IPv4 with ssl_mode ENCRYPTED_ONLY and no authorized networks; services connect via the Cloud SQL connector socket mounted at /cloudsql (roles/cloudsql.client on catalog/orders/inventory runtime SAs). DATABASE_URL per service from Secret Manager aforo-<svc>-database-url.",
+    "state": "describe (Oct 9): state STOPPED, activationPolicy NEVER, zone southamerica-east1-c, tier db-f1-micro, ENTERPRISE, PD_HDD 10 GB, backups disabled. databases/users list fails while stopped (Terraform declares catalog, orders, inventory)."
+   },
+   "dependsOn": [
+    {
+     "id": "infra-secrets",
+     "how": "DATABASE_URL secrets built from generated user passwords"
+    },
+    {
+     "id": "ops-make-switches",
+     "how": "env_on sets activation_policy"
+    },
+    {
+     "id": "infra-terraform",
+     "how": "declared in module cloud-sql"
+    }
+   ],
+   "patterns": [
+    "database per service",
+    "connection budget",
+    "stop when idle"
+   ],
+   "tactics": [
+    "E-02",
+    "E-07"
+   ],
+   "observed": "Ran on Oct 8-9 during demo windows and was stopped after make down (STOPPED/NEVER verified Oct 9 ~14:20 UTC, docs/evidence/e07-cost/README.md).",
+   "gotchas": [
+    "Databases and users can only be created while the instance runs, so the first apply that adds them must be make up, not make apply (infra/README.md#L100).",
+    "Starting a stopped instance takes a few minutes; /health/ready of DB services is 503 until then and the seed retries 3x (Makefile#L86).",
+    "Local runs against dev must use DB_POOL_MAX=1 via the Cloud SQL Auth Proxy.",
+    "deletion_protection = true on the instance."
+   ]
+  },
+  {
+   "id": "data-memorystore",
+   "name": "Memorystore for Redis (aforo-queue)",
+   "kind": "datastore",
+   "layer": "data",
+   "what": "Redis 7.2, BASIC tier, 1 GB, private IP via DIRECT_PEERING on aforo-vpc. Exists only while redis_enabled = true.",
+   "serves": "Queue positions, admission state and pass data for the waiting room; also the Gateway's per-IP rate-limit counters (ADR-0001 amendment).",
+   "why": [
+    {
+     "ref": "ADR-0001",
+     "note": "Cloud Run has no TCP ingress, so D-15 (Redis on Cloud Run) was replaced by Memorystore created only for live tests and demos."
+    },
+    {
+     "ref": "D-15",
+     "note": "Superseded by ADR-0001."
+    },
+    {
+     "ref": "E-07",
+     "note": "Bills by provisioned capacity (~US$1-2/day), so it is created by IaC only for windows."
+    }
+   ],
+   "declaredIn": [
+    "infra/modules/memorystore/main.tf",
+    "infra/envs/dev/network.tf#L16",
+    "infra/envs/dev/messaging.tf#L18"
+   ],
+   "code": "infra/modules/memorystore",
+   "contracts": [],
+   "gcp": {
+    "type": "Memorystore for Redis",
+    "name": "aforo-queue",
+    "config": "BASIC, 1 GB, REDIS_7_2, DIRECT_PEERING to aforo-vpc, no AUTH, no TLS. REDIS_URL (redis://host:port, empty when off) passed by Terraform to queue and gateway, both with Direct VPC egress PRIVATE_RANGES_ONLY.",
+    "state": "gcloud redis instances list: 0 items (switch off, as expected)."
+   },
+   "dependsOn": [
+    {
+     "id": "infra-vpc",
+     "how": "authorized_network aforo-vpc"
+    },
+    {
+     "id": "ops-make-switches",
+     "how": "redis_enabled creates/destroys it (make redis-up/redis-down/down)"
+    },
+    {
+     "id": "job-seed",
+     "how": "seed re-run after creation rebuilds the queue projection"
+    }
+   ],
+   "patterns": [
+    "on-demand infrastructure",
+    "cache/ephemeral store"
+   ],
+   "tactics": [
+    "E-07",
+    "E-01"
+   ],
+   "observed": "Created for demo windows Oct 8 evening, Oct 9 ~02:30-03:40 and ~13:00-14:20 UTC, destroyed after (docs/evidence/e07-cost/README.md).",
+   "gotchas": [
+    "Not only queue reaches it: gateway also has Direct VPC egress and REDIS_URL for quota counters (infra/envs/dev/services.tf#L49); the task brief saying 'only queue' is outdated, and network.tf#L1 comment still says only queue.",
+    "Creation takes up to ~10 min; run make redis-up >= 15 min before a demo.",
+    "Every creation starts empty and may change IP; queue-* push subscriptions and their DLQs exist only while on.",
+    "While off, queue /health/ready = 503 and queue endpoints answer 500; gateway quota is not enforced."
+   ]
+  },
+  {
+   "id": "infra-vpc",
+   "name": "VPC aforo-vpc",
+   "kind": "platform",
+   "layer": "platform",
+   "what": "Custom-mode VPC aforo-vpc with one subnet aforo-southamerica-east1 (10.10.0.0/24, Private Google Access). Permanent and free.",
+   "serves": "Private network for Memorystore; gateway and queue reach it with Direct VPC egress.",
+   "why": [
+    {
+     "ref": "ADR-0001",
+     "note": "Memorystore needs a VPC; Direct VPC egress avoids a paid Serverless VPC Access connector."
+    }
+   ],
+   "declaredIn": [
+    "infra/envs/dev/network.tf",
+    "infra/modules/cloud-run-service/main.tf#L51"
+   ],
+   "code": "infra/envs/dev/network.tf",
+   "contracts": [],
+   "gcp": {
+    "type": "VPC network + subnet",
+    "name": "aforo-vpc / aforo-southamerica-east1",
+    "config": "auto_create_subnetworks=false, 10.10.0.0/24, private_ip_google_access=true; Cloud Run vpc_access egress PRIVATE_RANGES_ONLY on gateway and queue.",
+    "state": "networks list: aforo-vpc (CUSTOM, REGIONAL) and the project's auto-mode 'default' network; subnet aforo-southamerica-east1 10.10.0.0/24 present."
+   },
+   "dependsOn": [],
+   "patterns": [
+    "private networking"
+   ],
+   "tactics": [
+    "E-07"
+   ],
+   "observed": "Direct VPC egress from queue to Memorystore worked in the Oct 8-9 demo runs (queue live with make redis-up, docs/evidence/happy-path/README.md).",
+   "gotchas": [
+    "An auto-mode 'default' VPC also exists in the project and is not declared in Terraform.",
+    "docs/runbooks/environment-up-down.md#L73 still says Direct VPC egress is 'not exercised yet', which the later evidence supersedes."
+   ]
+  },
+  {
+   "id": "infra-artifact-registry",
+   "name": "Artifact Registry and functions source bucket",
+   "kind": "platform",
+   "layer": "delivery",
+   "what": "Docker repository 'aforo' with immutable tags for service and web images, plus a versioned GCS bucket aforo-dev-teamf-functions for function source archives <fn>/<sha>.zip.",
+   "serves": "Stores the immutable artifacts CI deploys by digest (images) or by SHA archive (functions).",
+   "why": [
+    {
+     "ref": "D-19",
+     "note": "Images tagged with full git SHA and deployed by digest; immutable_tags=true makes re-tagging fail."
+    },
+    {
+     "ref": "ADR-0004",
+     "note": "CI owns the artifact; Terraform owns the repository."
+    }
+   ],
+   "declaredIn": [
+    "infra/envs/dev/main.tf#L19",
+    "infra/envs/dev/outputs.tf#L17"
+   ],
+   "code": "infra/envs/dev/main.tf",
+   "contracts": [],
+   "gcp": {
+    "type": "Artifact Registry (DOCKER) + Cloud Storage",
+    "name": "southamerica-east1-docker.pkg.dev/aforo-dev-teamf/aforo; gs://aforo-dev-teamf-functions",
+    "config": "DOCKER format, immutable tags; bucket uniform access, public access prevention enforced, versioning on.",
+    "state": "repositories: aforo (287 MB) and gcf-artifacts (115 MB, created by Cloud Functions builds, not by our Terraform). Images: gateway 7, orders 3, web 2, catalog 1, inventory 1, queue 1 digests. Buckets: aforo-dev-teamf-functions, aforo-dev-teamf-tfstate, gcf-v2-sources-68220265740-southamerica-east1."
+   },
+   "dependsOn": [
+    {
+     "id": "ci-pipeline",
+     "how": "pushes images/archives"
+    }
+   ],
+   "patterns": [
+    "immutable artifact"
+   ],
+   "tactics": [
+    "E-07"
+   ],
+   "observed": "orders deploy on Oct 9 pushed orders@sha256:b6a6cf56...; a retry of the same SHA reuses the image (docs/evidence/deployment/README.md).",
+   "gotchas": [
+    "Storage cost grows with one image per deployed SHA; no cleanup policy is declared."
+   ]
+  },
+  {
+   "id": "infra-secrets",
+   "name": "Secret Manager secrets",
+   "kind": "platform",
+   "layer": "platform",
+   "what": "Five secrets generated by Terraform (random_password) and stored only in Secret Manager: aforo-auth-secret, aforo-webhook-secret, aforo-catalog-database-url, aforo-orders-database-url, aforo-inventory-database-url.",
+   "serves": "JWT signing key for the simulated login, HMAC key for the payment webhook, and per-service DATABASE_URL; injected as env vars (version latest).",
+   "why": [
+    {
+     "ref": "D-06",
+     "note": "HS256 login secret aforo-auth-secret, read only by gateway."
+    },
+    {
+     "ref": "D-16",
+     "note": "Webhook HMAC shared by orders and mock-payment-gateway."
+    },
+    {
+     "ref": "ADR-0004",
+     "note": "Secrets are Terraform configuration, never in tfvars or CI."
+    }
+   ],
+   "declaredIn": [
+    "infra/envs/dev/secrets.tf",
+    "infra/modules/cloud-sql/main.tf#L64",
+    "infra/modules/cloud-run-service/main.tf#L9"
+   ],
+   "code": "infra/envs/dev/secrets.tf",
+   "contracts": [],
+   "gcp": {
+    "type": "Secret Manager",
+    "name": "aforo-auth-secret, aforo-webhook-secret, aforo-<svc>-database-url x3",
+    "config": "Automatic replication; each runtime SA gets roles/secretmanager.secretAccessor only on its own secrets.",
+    "state": "secrets list shows the 5 secrets. Accessors: auth -> aforo-gateway-run; webhook -> aforo-orders-run, aforo-mock-payment-gateway-run; each database-url -> its own aforo-<svc>-run. Values not read."
+   },
+   "dependsOn": [
+    {
+     "id": "infra-iam",
+     "how": "per-secret accessor bindings"
+    },
+    {
+     "id": "data-cloudsql",
+     "how": "DB passwords generated with the users"
+    }
+   ],
+   "patterns": [
+    "least privilege",
+    "secrets as config"
+   ],
+   "tactics": [],
+   "observed": "",
+   "gotchas": [
+    "Secret values live in Terraform state (random_password), so the tfstate bucket is sensitive.",
+    "infra/README.md lists 'DB passwords' as secrets; they are stored inside the DATABASE_URL secrets, not as separate secrets."
+   ]
+  },
+  {
+   "id": "infra-iam",
+   "name": "Service accounts and invoker IAM",
+   "kind": "platform",
+   "layer": "platform",
+   "what": "One runtime SA per Cloud Run service/function (aforo-<name>-run) plus caller SAs aforo-pubsub-push, aforo-tasks-invoker, aforo-scheduler, aforo-eventarc, aforo-functions-build, and github-ci for CI via Workload Identity Federation.",
+   "serves": "Decides who can invoke whom: only web and gateway are public; every other service/function is private and invoked with Google OIDC ID tokens using custom audiences aforo-<svc>.",
+   "why": [
+    {
+     "ref": "ADR-0004",
+     "note": "IAM is Terraform-owned configuration."
+    },
+    {
+     "ref": "D-21",
+     "note": "prewarmer gets run.developer only on aforo-gateway and aforo-queue plus actAs on their runtime SAs."
+    },
+    {
+     "ref": "D-06",
+     "note": "Logic services trust gateway headers because only gateway (and system SAs) can invoke them."
+    }
+   ],
+   "declaredIn": [
+    "infra/modules/cloud-run-service/main.tf#L4",
+    "infra/envs/dev/services.tf",
+    "infra/envs/dev/functions.tf",
+    "infra/envs/dev/messaging.tf#L4",
+    "infra/envs/dev/tasks.tf",
+    "infra/envs/dev/scheduler.tf#L4",
+    "infra/envs/dev/main.tf#L11"
+   ],
+   "code": "infra/",
+   "contracts": [
+    "contracts/conventions.md"
+   ],
+   "gcp": {
+    "type": "IAM service accounts + Cloud Run run.invoker bindings + WIF",
+    "name": "aforo-*-run, aforo-pubsub-push, aforo-tasks-invoker, aforo-scheduler, aforo-eventarc, aforo-functions-build, github-ci",
+    "config": "Invokers: web=allUsers; gateway=allUsers (+prewarmer run.developer); catalog=gateway,scheduler; queue=gateway,pubsub-push (+prewarmer run.developer); orders=gateway,pubsub-push,scheduler; inventory=gateway,orders,pubsub-push,scheduler,tasks-invoker; prewarmer=pubsub-push,tasks-invoker; dlq-monitor=eventarc; mock-payment-gateway=gateway,orders,tasks-invoker. Project roles: cloudsql.client on catalog/orders/inventory run SAs; datastore.user on mock run SA; functions-build has cloudbuild.builds.builder, logging.logWriter, artifactregistry.writer, storage.objectViewer. Task-queue enqueuer: inventory (reservation-expiry), mock (payment-webhooks), prewarmer (prewarm-windows, plus viewer), each with actAs on aforo-tasks-invoker. Team members get roles/editor.",
+    "state": "get-iam-policy on the 9 Cloud Run services matches the Terraform bindings above. 17 SAs listed (incl. default compute and appspot SAs). github-ci holds roles/owner on the project; WIF pool 'github' ACTIVE, provider aforo-repo (issuer token.actions.githubusercontent.com, condition repository_id == 1377885043), github-ci grants workloadIdentityUser to that repository principalSet."
+   },
+   "dependsOn": [
+    {
+     "id": "infra-terraform",
+     "how": "declares all SAs except github-ci/WIF"
+    }
+   ],
+   "patterns": [
+    "least privilege",
+    "service-to-service OIDC",
+    "workload identity federation"
+   ],
+   "tactics": [],
+   "observed": "CI smoke tests minted ID tokens with audience aforo-<svc> via WIF and got 200 on tag URLs (docs/evidence/deployment/README.md).",
+   "gotchas": [
+    "github-ci and the WIF pool/provider were created by hand at bootstrap (infra/README.md#L9) and are not in Terraform.",
+    "github-ci has roles/owner on the project, broader than CI needs.",
+    "Cloud Run IAM is per service, not per path: infra/README.md#L132 says only the Pub/Sub SA may invoke /internal/v1/events/* and only the Scheduler SA /housekeeping, but gateway, pubsub-push, scheduler and tasks-invoker can each call any path of a service they may invoke; path separation relies on the gateway not exposing /internal and on the app.",
+    "Default compute and appspot SAs keep roles/editor (GCP defaults, not managed by Terraform).",
+    "All Cloud Run services use ingress INGRESS_TRAFFIC_ALL; privacy is IAM only."
+   ]
+  },
+  {
+   "id": "infra-terraform",
+   "name": "Terraform (infra/envs/dev)",
+   "kind": "platform",
+   "layer": "platform",
+   "what": "Single environment root infra/envs/dev with modules cloud-run-service, cloud-function, cloud-sql, memorystore, pubsub-topic. State in GCS bucket aforo-dev-teamf-tfstate (prefix envs/dev, versioned). Terraform >= 1.9, google provider ~> 7.0.",
+   "serves": "Declares every GCP resource and all configuration (env, secrets, scaling, probes, IAM, network, switches); CI owns only image/source and traffic.",
+   "why": [
+    {
+     "ref": "ADR-0004",
+     "note": "Terraform owns config, CI owns code and traffic; services ignore image/traffic/client and service-level min instances; functions ignore build_config source."
+    },
+    {
+     "ref": "RT-04",
+     "note": "Everything in GCP is declared as code; nothing created in the console."
+    },
+    {
+     "ref": "ADR-0005",
+     "note": "Instance caps, concurrency and pool sizes are Terraform variables per service."
+    }
+   ],
+   "declaredIn": [
+    "infra/envs/dev/backend.tf",
+    "infra/envs/dev/versions.tf",
+    "infra/envs/dev/variables.tf",
+    "infra/envs/dev/outputs.tf",
+    "infra/README.md"
+   ],
+   "code": "infra/",
+   "contracts": [
+    "contracts/events/README.md"
+   ],
+   "gcp": {
+    "type": "Terraform with GCS backend",
+    "name": "gs://aforo-dev-teamf-tfstate (envs/dev)",
+    "config": "Files: backend.tf, versions.tf, variables.tf, terraform.tfvars, main.tf (team access, Artifact Registry, functions bucket), network.tf, database.tf, services.tf, functions.tf, messaging.tf, tasks.tf, scheduler.tf, secrets.tf, monitoring.tf, outputs.tf. Services created with placeholder image us-docker.pkg.dev/cloudrun/container/hello; probes on /health/live; custom_audiences aforo-<name>. Default labels app=aforo, env=dev, owner=platform.",
+    "state": "State bucket aforo-dev-teamf-tfstate exists in SOUTHAMERICA-EAST1. Applies are manual (make apply / switch targets); infra.yml only plans on PRs."
+   },
+   "dependsOn": [
+    {
+     "id": "ops-make-switches",
+     "how": "all applies go through make"
+    }
+   ],
+   "patterns": [
+    "infrastructure as code",
+    "config/code ownership split"
+   ],
+   "tactics": [
+    "E-07"
+   ],
+   "observed": "Revision aforo-orders-00006-sk7 was created by a Terraform config change while keeping the CI-deployed digest (docs/evidence/deployment/README.md).",
+   "gotchas": [
+    "Never run terraform apply by hand: it resets every switch to its default.",
+    "A plan after a CI deploy shows template revision -> null; expected (infra/modules/cloud-run-service/main.tf#L143).",
+    "infra/README.md#L26 lists modules cloud-tasks-queue and monitoring that do not exist; tasks and monitoring are inline in envs/dev.",
+    "Bootstrap (state bucket, APIs, WIF, github-ci) was manual and is outside Terraform.",
+    "Config changes applied by Terraform go live all-at-once, not blue/green."
+   ]
+  },
+  {
+   "id": "ops-make-switches",
+   "name": "Makefile runtime switches",
+   "kind": "platform",
+   "layer": "platform",
+   "what": "Make targets that wrap terraform apply with three switches: env_on, redis_enabled, mock_fault_mode. Each target reads current values from Terraform outputs (switch_*) and changes only its own.",
+   "serves": "Turns dev off/on/demo in one command, runs the seed, injects payment faults (E-06), publishes poison messages (E-05) and triggers CI deploys.",
+   "why": [
+    {
+     "ref": "ADR-0004",
+     "note": "Switches are Terraform variables persisted as outputs so no apply flips one by accident."
+    },
+    {
+     "ref": "ADR-0001",
+     "note": "redis-up/redis-down create and destroy Memorystore."
+    },
+    {
+     "ref": "E-07",
+     "note": "Cost follows use: off by default."
+    }
+   ],
+   "declaredIn": [
+    "Makefile#L28",
+    "infra/envs/dev/variables.tf#L18",
+    "infra/envs/dev/outputs.tf#L1",
+    "docs/runbooks/environment-up-down.md"
+   ],
+   "code": "Makefile",
+   "contracts": [],
+   "gcp": {
+    "type": "Terraform variables (via make)",
+    "name": "env_on, redis_enabled, mock_fault_mode",
+    "config": "status: prints switches. up: env_on=true (Cloud SQL ALWAYS, schedulers resumed) + seed. down: env_on=false, redis_enabled=false, fault none. redis-up: env_on=true, redis_enabled=true + seed. redis-down: redis_enabled=false. fault MODE=none|error|timeout: sets FAULT_MODE on mock-payment-gateway (~1 min, new revision). poison TOPIC=...: gcloud pubsub publish 'not-an-envelope' with a fresh correlationId. seed: executes Cloud Run job aforo-catalog-seed (3 tries, 30 s apart). deploy SERVICE=...: gh workflow run on main and watch. plan/apply: with current switches.",
+    "state": "Current: Cloud SQL STOPPED/NEVER, no Redis, 3 housekeeping jobs PAUSED, consistent with env_on=false, redis_enabled=false (mock_fault_mode not checked; make down resets it to none)."
+   },
+   "dependsOn": [
+    {
+     "id": "infra-terraform",
+     "how": "terraform -chdir=infra/envs/dev apply"
+    },
+    {
+     "id": "data-cloudsql",
+     "how": "env_on"
+    },
+    {
+     "id": "data-memorystore",
+     "how": "redis_enabled"
+    },
+    {
+     "id": "fn-mock-payment-gateway",
+     "how": "mock_fault_mode -> FAULT_MODE"
+    },
+    {
+     "id": "job-seed",
+     "how": "make seed"
+    },
+    {
+     "id": "ci-pipeline",
+     "how": "make deploy"
+    }
+   ],
+   "patterns": [
+    "runtime switch",
+    "one-command environment"
+   ],
+   "tactics": [
+    "E-07",
+    "E-06",
+    "E-05"
+   ],
+   "observed": "Used Oct 8-9: off/on cycles listed in docs/evidence/e07-cost/README.md; make down verified Oct 9 ~14:20 UTC; make poison drove E-05; make fault drove E-06.",
+   "gotchas": [
+    "make deploy waits 5 s then watches the newest run; on Oct 9 it picked the previous run (docs/evidence/deployment/README.md 'Found').",
+    "make seed skips with a warning if catalog has never been deployed.",
+    "Announce make down/redis-down to the team first; last one out runs make down."
+   ]
+  },
+  {
+   "id": "ci-pipeline",
+   "name": "GitHub Actions CI/CD",
+   "kind": "ci",
+   "layer": "delivery",
+   "what": "Per-unit workflows (service-<name>.yml x5, web.yml, function-<name>.yml x3, contracts.yml, infra.yml) calling reusable _service.yml and _function.yml. Auth to GCP via Workload Identity Federation as github-ci.",
+   "serves": "Builds, tests and deploys each unit as an immutable artifact with blue/green; plans Terraform on infra PRs.",
+   "why": [
+    {
+     "ref": "D-19",
+     "note": "Immutable artifacts by SHA, deploy by digest, --no-traffic revision with tag, smoke, then shift; migrations as a Cloud Run job before traffic."
+    },
+    {
+     "ref": "ADR-0004",
+     "note": "Deploy steps change only image/source and traffic, never env or scaling."
+    }
+   ],
+   "declaredIn": [
+    ".github/workflows/_service.yml",
+    ".github/workflows/_function.yml",
+    ".github/workflows/README.md",
+    "docs/architecture/build-and-deploy.md"
+   ],
+   "code": ".github/workflows",
+   "contracts": [],
+   "gcp": {
+    "type": "GitHub Actions + Cloud Run revisions",
+    "name": "github-ci@aforo-dev-teamf.iam.gserviceaccount.com",
+    "config": "_service.yml: check (npm ci, build @aforo/common, lint, test, docker build) -> deploy only on workflow_dispatch or push to main with DEPLOY_ON_MERGE=='true': build+push <unit>:<full sha> (or reuse existing digest) -> update aforo-<svc>-* jobs to the digest and execute aforo-<svc>-migrate --wait -> gcloud run deploy --no-traffic --tag sha-<short> -> ID token (audience aforo-<svc>) smoke on tag URL /health/ready (queue: /health/live), 5 tries -> update-traffic --to-latest. Functions: upload gs://aforo-dev-teamf-functions/<fn>/<sha>.zip (no-clobber), gcloud functions deploy --source, all-at-once. infra.yml: fmt, validate, make plan on PRs; no apply.",
+    "state": "gh variable list shows no repo variables, so DEPLOY_ON_MERGE is unset and deploys happen only by hand (make deploy)."
+   },
+   "dependsOn": [
+    {
+     "id": "infra-artifact-registry",
+     "how": "push images/archives"
+    },
+    {
+     "id": "infra-iam",
+     "how": "github-ci via WIF"
+    },
+    {
+     "id": "job-migrate",
+     "how": "executes aforo-<svc>-migrate before traffic"
+    },
+    {
+     "id": "data-cloudsql",
+     "how": "migrate and /health/ready smoke need make up"
+    }
+   ],
+   "patterns": [
+    "blue/green",
+    "immutable artifact",
+    "expand/contract migrations",
+    "smoke test"
+   ],
+   "tactics": [],
+   "observed": "Oct 9 13:58-14:04 UTC make deploy SERVICE=orders (run 37940782038): dispatch to 100% in 3 min 6 s; migrate 28 s; revision aforo-orders-00009-guv at 0% then smoke 200 then shift. Rollback to 00006-sk7 took 8.3 s, roll-forward 5.6 s. Oct 8: image #38 (00005-zod) failed to boot and never got traffic (docs/evidence/deployment/README.md).",
+   "gotchas": [
+    "Smoke on /health/ready needs make up for DB services; a failure leaves traffic on the old revision.",
+    "Functions have no pre-traffic smoke test (ADR-0004).",
+    "common.yml and e2e.yml are still TODO (.github/workflows/README.md)."
+   ]
+  },
+  {
+   "id": "obs-logging",
+   "name": "Structured JSON logs and correlation ID",
+   "kind": "observability",
+   "layer": "platform",
+   "what": "One JSON line per request (severity, message, service, correlationId, userId, route, status, latencyMs) written to stdout/stderr by @aforo/common, indexed by Cloud Logging as jsonPayload.",
+   "serves": "Lets one purchase be followed across gateway, services, Pub/Sub, Cloud Tasks and functions by a single correlationId.",
+   "why": [
+    {
+     "ref": "E-05",
+     "note": "Traceability tactic: correlationId in every log line, envelope field and Pub/Sub attribute."
+    }
+   ],
+   "declaredIn": [
+    "contracts/conventions.md#L32",
+    "contracts/conventions.md#L104",
+    "packages/common/src/core/logging/structured-logger.ts",
+    "packages/common/src/core/correlation/correlation-context.ts",
+    "packages/common/src/nest/logging/request-logging.middleware.ts"
+   ],
+   "code": "packages/common/src/core/logging",
+   "contracts": [
+    "contracts/conventions.md",
+    "contracts/events/envelope.schema.json"
+   ],
+   "gcp": {
+    "type": "Cloud Logging (default sink)",
+    "name": "jsonPayload.*",
+    "config": "No custom sinks; ERROR/CRITICAL to stderr, rest to stdout. Gateway generates X-Correlation-Id (UUID v4) if absent; AsyncLocalStorage carries it; Pub/Sub consumers adopt it from the envelope.",
+    "state": "unknown (not queried; dev off)"
+   },
+   "dependsOn": [
+    {
+     "id": "lib-common",
+     "how": "StructuredLogger, JsonLogger, correlation context"
+    }
+   ],
+   "patterns": [
+    "structured logging",
+    "correlation ID"
+   ],
+   "tactics": [
+    "E-05"
+   ],
+   "observed": "Happy path step 10: correlationId ecd0fae3-... followed across orders, inventory and gateway, and the bus hop catalog->inventory (docs/evidence/happy-path/README.md). E-05 poison fe16d541-... traced through 3 consumers and dlq-monitor.",
+   "gotchas": [
+    "Never log tokens, secrets or full bodies; log queuePass when X-Queue-Pass is present.",
+    "Invalid incoming correlation IDs (not UUID v4) are replaced with a new one."
+   ]
+  },
+  {
+   "id": "obs-dead-letter-alert",
+   "name": "Dead-letter alert",
+   "kind": "observability",
+   "layer": "platform",
+   "what": "Log-based metric aforo/dead_letters counting jsonPayload.event=\"dead_letter\" lines from aforo-dlq-monitor, an alert policy 'aforo: message dead-lettered' (count > 0 over 60 s, auto_close 1800 s) and email notification channels from var.alert_emails.",
+   "serves": "Turns a message reaching any DLQ into an incident and an email within 5 minutes.",
+   "why": [
+    {
+     "ref": "E-05",
+     "note": "DLQ with messages -> alert tactic."
+    },
+    {
+     "ref": "D-17",
+     "note": "dlq-monitor emits the structured log the metric counts."
+    },
+    {
+     "ref": "ADR-0005",
+     "note": "5 delivery attempts, 10-60 s backoff and 60 s alignment keep the loop under 5 min."
+    }
+   ],
+   "declaredIn": [
+    "infra/envs/dev/monitoring.tf",
+    "infra/envs/dev/terraform.tfvars"
+   ],
+   "code": "infra/envs/dev/monitoring.tf",
+   "contracts": [],
+   "gcp": {
+    "type": "Cloud Logging metric + Cloud Monitoring alert policy + email channel",
+    "name": "aforo/dead_letters; 'aforo: message dead-lettered'",
+    "config": "DELTA INT64 metric; condition ALIGN_COUNT over 60 s, threshold > 0, duration 0 s; documentation points to docs/runbooks/demo.md (E-05). One email address in alert_emails.",
+    "state": "logging metrics list: aforo/dead_letters. Alert policy enabled with 1 notification channel."
+   },
+   "dependsOn": [
+    {
+     "id": "fn-dlq-monitor",
+     "how": "its event=dead_letter log lines"
+    },
+    {
+     "id": "obs-logging",
+     "how": "structured jsonPayload"
+    }
+   ],
+   "patterns": [
+    "log-based alerting",
+    "dead letter queue"
+   ],
+   "tactics": [
+    "E-05"
+   ],
+   "observed": "Oct 9: poison published 13:27:00, dead_letter lines 13:28:36-13:28:46 (3 DLQs), incident open 13:30:30 (3 min 30 s after publish), email received; auto-closed after 30 min 58 s (docs/evidence/e05-observability/README.md).",
+   "gotchas": [
+    "A log-based count has no data when nothing dead-letters, so the incident closes only by auto_close (30 min), reported as 'missing data'.",
+    "Alert appears ~2 min after the dead letters (ingestion + 60 s window)."
+   ]
+  },
+  {
+   "id": "contracts",
+   "name": "Contracts (OpenAPI, events, conventions)",
+   "kind": "contract",
+   "layer": "platform",
+   "what": "OpenAPI files per service and function, event envelope and payload JSON Schemas, and normative cross-service conventions. The contract wins over code and READMEs.",
+   "serves": "Single source of truth for routes, headers, errors, formats and messaging; Prism mocks and Redocly lint run from it.",
+   "why": [
+    {
+     "ref": "RD-05",
+     "note": "Breaking change creates /v2, never edits /v1."
+    },
+    {
+     "ref": "RD-02",
+     "note": "Idempotency-Key replays return the same body and status."
+    },
+    {
+     "ref": "R-07",
+     "note": "Schema violations are 422 VALIDATION_ERROR; 400 only for unparseable bodies and invalid envelopes."
+    },
+    {
+     "ref": "ADR-0002",
+     "note": "POST /internal/v1/housekeeping on catalog, inventory, orders."
+    }
+   ],
+   "declaredIn": [
+    "contracts/README.md",
+    "contracts/conventions.md",
+    "contracts/events/README.md",
+    ".github/workflows/contracts.yml"
+   ],
+   "code": "contracts",
+   "contracts": [
+    "contracts/openapi/gateway.yaml",
+    "contracts/openapi/catalog.yaml",
+    "contracts/openapi/queue.yaml",
+    "contracts/openapi/orders.yaml",
+    "contracts/openapi/inventory.yaml",
+    "contracts/openapi/mock-payment-gateway.yaml",
+    "contracts/openapi/prewarmer.yaml",
+    "contracts/openapi/components/common.yaml",
+    "contracts/events/envelope.schema.json"
+   ],
+   "gcp": {
+    "type": "none",
+    "name": "",
+    "config": "",
+    "state": ""
+   },
+   "dependsOn": [],
+   "patterns": [
+    "contract-first",
+    "problem+json",
+    "idempotency key",
+    "versioned routes",
+    "event envelope"
+   ],
+   "tactics": [
+    "E-05"
+   ],
+   "observed": "",
+   "gotchas": [
+    "contracts/README.md still says 'Status: DRAFT - to be frozen Tue Sept 29' with open points listed.",
+    "Conventions say the caller requests an ID token 'for the target URL'; infra and CI use custom audiences aforo-<svc> instead.",
+    "Key rules: /api/v1 public, /internal/v1 not exposed by gateway; errors application/problem+json with type https://aforo.dev/errors/<code>; money integer cents + COP; ISO-8601 UTC; UUID v4; Idempotency-Key with Idempotent-Replayed header and 409 IDEMPOTENCY_CONFLICT; envelope {messageId,type,version,occurredAt,correlationId,producer,data} with type and correlationId also as Pub/Sub attributes."
+   ]
+  }
+ ],
+ "decisions": [],
+ "notes": "Platform scope. Dev was OFF when queried (Oct 9): Cloud SQL STOPPED/NEVER, no Memorystore, schedulers PAUSED. Conflicts: (1) gateway also has Direct VPC egress + REDIS_URL (ADR-0001 amendment), so 'only queue reaches Memorystore' is outdated; network.tf comment still says only queue. (2) infra/README.md lists modules cloud-tasks-queue and monitoring that do not exist. (3) infra/README.md implies path-level invoker restrictions; Cloud Run IAM is service-level. (4) github-ci has roles/owner and, with the WIF pool/provider and state bucket, is outside Terraform (bootstrap). (5) runbook says Direct VPC egress 'not exercised yet' though demos ran with Redis. (6) Default auto-mode VPC exists, not in Terraform. (7) DEPLOY_ON_MERGE unset (gh variable list empty). Did not create db-* or job-* components; data-cloudsql names the three logical DBs. Secret values were not read."
+}

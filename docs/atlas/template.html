@@ -1,0 +1,323 @@
+<title>Aforo Platform Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@112,600;112,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a transit-style map of the platform, lanes from the buyer's browser down to the platform, with a detail rail */
+:root{
+  --bg:#f3f5f4; --surface:#ffffff; --ink:#16201d; --muted:#5d6b66; --line:#d6dddA; --soft:#e8edeb;
+  --accent:#0f6e5c; --accent-soft:#d8ece6;
+  --k-service:#1f5fbf; --k-web:#6b3fb5; --k-function:#c2620c; --k-data:#2f7d3a; --k-msg:#8a3b8f; --k-platform:#4b5a63; --k-flow:#0f6e5c;
+  --good:#2f7d3a; --warn:#b26b00; --bad:#b3261e;
+  --f-display:"Archivo", "Helvetica Neue", Arial, sans-serif;
+  --f-body:"Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1513; --surface:#161e1b; --ink:#e3ebe8; --muted:#93a39d; --line:#2a3632; --soft:#1d2724;
+  --accent:#5cc9ae; --accent-soft:#163a31;
+  --k-service:#6aa1ff; --k-web:#b38cff; --k-function:#f0a052; --k-data:#74c47f; --k-msg:#d58cd9; --k-platform:#9fb0ba; --k-flow:#5cc9ae;
+  --good:#74c47f; --warn:#f0b452; --bad:#ff8a80; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1513; --surface:#161e1b; --ink:#e3ebe8; --muted:#93a39d; --line:#2a3632; --soft:#1d2724;
+  --accent:#5cc9ae; --accent-soft:#163a31;
+  --k-service:#6aa1ff; --k-web:#b38cff; --k-function:#f0a052; --k-data:#74c47f; --k-msg:#d58cd9; --k-platform:#9fb0ba; --k-flow:#5cc9ae;
+  --good:#74c47f; --warn:#f0b452; --bad:#ff8a80; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--f-body);margin:0}
+.wrap{padding-inline:clamp(16px,3vw,40px);padding-block:20px 60px;max-width:1500px;margin:0 auto}
+header.top{display:flex;flex-wrap:wrap;gap:12px 28px;align-items:end;justify-content:space-between;padding-block:8px 18px;border-bottom:1px solid var(--line)}
+h1{font:800 clamp(26px,3.4vw,40px)/1.05 var(--f-display);font-stretch:112%;letter-spacing:-.01em;margin:0;text-wrap:balance}
+.sub{color:var(--muted);max-width:68ch;margin:6px 0 0}
+.meta{font:12px var(--f-mono);color:var(--muted);display:flex;gap:14px;flex-wrap:wrap}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap;margin:18px 0 14px}
+nav.tabs button{font:600 13px var(--f-body);letter-spacing:.02em;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:8px 14px;border-radius:999px;cursor:pointer}
+nav.tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.view[hidden]{display:none}
+/* map view */
+.mapgrid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:18px;align-items:start}
+@media (max-width:1100px){.mapgrid{grid-template-columns:minmax(0,1fr)}}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+.toolbar input,.toolbar select{font:14px var(--f-body);padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);min-width:0}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:3px;display:inline-block}
+.mapbox{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow-x:auto}
+svg.map{display:block}
+.lane-label{font:600 11px var(--f-mono);letter-spacing:.12em;text-transform:uppercase;fill:var(--muted)}
+.lane-bg{fill:var(--soft)}
+.node rect{fill:var(--surface);stroke-width:1.5}
+.node text{font:500 12.5px var(--f-body);fill:var(--ink);pointer-events:none}
+.node text.id{font:400 10px var(--f-mono);fill:var(--muted)}
+.node{cursor:pointer}
+.node:hover rect{stroke-width:2.5}
+.node.sel rect{stroke-width:3}
+.edge{fill:none;stroke:var(--line);stroke-width:1.4}
+.edge.on{stroke:var(--accent);stroke-width:2.2}
+.edge.in{stroke:var(--k-function);stroke-width:2.2}
+.dim{opacity:.18;transition:opacity .2s}
+.flowmark rect{stroke:var(--accent)!important;stroke-width:3.5!important}
+/* detail rail */
+aside.detail{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px);max-height:calc(100vh - 24px);overflow:auto;min-width:0}
+@media (max-width:1100px){aside.detail{position:static;max-height:none}}
+.kind{font:600 11px var(--f-mono);letter-spacing:.1em;text-transform:uppercase}
+.detail h2{font:800 22px/1.15 var(--f-display);font-stretch:112%;margin:4px 0 2px}
+.detail .cid{font:12px var(--f-mono);color:var(--muted)}
+.detail h3{font:600 11px var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
+.detail p{margin:0 0 6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:500 12px var(--f-mono);border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:6px;padding:2px 7px;cursor:pointer}
+.chip.dec{border-color:var(--accent);color:var(--accent)}
+.chip.tac{border-color:var(--k-function);color:var(--k-function)}
+.chip.plain{cursor:default}
+ul.rel{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+ul.rel li{display:grid;gap:2px;font-size:13.5px}
+ul.rel li small{color:var(--muted)}
+.path{font:12px var(--f-mono);overflow-wrap:anywhere;color:var(--ink)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:13.5px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.obs{border-left:3px solid var(--good);padding:6px 10px;background:var(--bg);border-radius:0 6px 6px 0;font-size:13.5px}
+.gotcha{border-left:3px solid var(--warn);padding:4px 10px;font-size:13.5px;margin-bottom:4px}
+.empty{color:var(--muted)}
+/* lists */
+.list{display:grid;gap:10px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+.card h4{margin:0 0 4px;font:600 16px/1.3 var(--f-body)}
+.card .row{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
+.badge{font:600 11px var(--f-mono);letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:5px;background:var(--soft);color:var(--muted)}
+.badge.accepted{background:var(--accent-soft);color:var(--accent)}
+.badge.deferred,.badge.open{color:var(--warn)}
+.badge.dropped,.badge.superseded{color:var(--bad)}
+.cols2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:12px}
+.lbl{font:600 11px var(--f-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+table.t{border-collapse:collapse;width:100%;font-size:13.5px}
+table.t th,table.t td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+table.t th{font:600 11px var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tbox{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:10px}
+/* flow */
+.steps{display:grid;gap:8px;counter-reset:s}
+.step{display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:start;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer}
+.step b{font:800 18px var(--f-display);color:var(--accent)}
+.step[aria-current="true"]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.intro{max-width:75ch;color:var(--muted);margin:0 0 14px}
+.yes{color:var(--good)} .partial{color:var(--warn)} .no{color:var(--bad)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Aforo Platform Atlas</h1>
+      <p class="sub">Every component of the Delivery 4 slice: what it is, why it exists, where it is declared, how it runs on GCP, what it depends on, and what we saw it do on <code>dev</code>.</p>
+    </div>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Views">
+    <button role="tab" id="t-map" aria-selected="true" data-view="map">Map</button>
+    <button role="tab" id="t-flow" aria-selected="false" data-view="flow">Purchase flow</button>
+    <button role="tab" id="t-scen" aria-selected="false" data-view="scen">Quality scenarios</button>
+    <button role="tab" id="t-dec" aria-selected="false" data-view="dec">Decisions</button>
+    <button role="tab" id="t-lin" aria-selected="false" data-view="lin">From design to slice</button>
+  </nav>
+
+  <section class="view" id="v-map">
+    <div class="mapgrid">
+      <div style="min-width:0">
+        <div class="toolbar">
+          <input id="q" type="search" placeholder="Find a component, decision or GCP name" aria-label="Search">
+          <select id="lens" aria-label="Highlight">
+            <option value="">Highlight: nothing</option>
+          </select>
+          <div class="legend" id="legend"></div>
+        </div>
+        <div class="mapbox"><svg class="map" id="map" role="img" aria-label="Platform map"></svg></div>
+        <p class="intro" style="margin-top:10px">Click a component to see its card. Teal lines are what it depends on; orange lines are what depends on it. Decision and scenario chips highlight every component they touch.</p>
+      </div>
+      <aside class="detail" id="detail" aria-live="polite"></aside>
+    </div>
+  </section>
+
+  <section class="view" id="v-flow" hidden>
+    <p class="intro">The acceptance script, step by step. Each step lights up the components that act in it on the map.</p>
+    <div class="mapgrid">
+      <div class="steps" id="steps"></div>
+      <div class="mapbox" style="position:sticky;top:12px"><svg class="map" id="map2" role="img" aria-label="Platform map for the flow"></svg></div>
+    </div>
+  </section>
+
+  <section class="view" id="v-scen" hidden>
+    <p class="intro">The quality scenarios from Delivery 3, what the slice kept to realize each one, and what we measured on <code>dev</code>.</p>
+    <div class="cols2" id="scen"></div>
+  </section>
+
+  <section class="view" id="v-dec" hidden>
+    <div class="toolbar">
+      <input id="dq" type="search" placeholder="Filter decisions" aria-label="Filter decisions">
+      <select id="dkind" aria-label="Kind"><option value="">All kinds</option></select>
+    </div>
+    <div class="list" id="decs"></div>
+  </section>
+
+  <section class="view" id="v-lin" hidden>
+    <div id="lin"></div>
+  </section>
+</div>
+
+<script>
+const DATA = /*DATA*/null/*END*/;
+</script>
+<script>
+(function(){
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const C=DATA.components, byId=Object.fromEntries(C.map(c=>[c.id,c]));
+const D=DATA.decisions, decById=Object.fromEntries(D.map(d=>[d.id,d]));
+const KCOL={service:"--k-service",web:"--k-web",function:"--k-function",datastore:"--k-data",database:"--k-data",topic:"--k-msg",dlq:"--k-msg","task-queue":"--k-msg",scheduler:"--k-msg",job:"--k-platform",platform:"--k-platform",library:"--k-platform",contract:"--k-platform",observability:"--k-platform",ci:"--k-platform",flow:"--k-flow"};
+const col=k=>`var(${KCOL[k]||"--k-platform"})`;
+$("#meta").innerHTML=DATA.meta.map(m=>`<span>${esc(m)}</span>`).join("");
+$("#legend").innerHTML=[["Services","--k-service"],["Web","--k-web"],["Functions","--k-function"],["Data","--k-data"],["Messaging","--k-msg"],["Platform","--k-platform"]].map(([n,v])=>`<span><i style="background:var(${v})"></i>${n}</span>`).join("");
+
+// edges: dependsOn
+const E=[];C.forEach(c=>(c.dependsOn||[]).forEach(d=>{if(byId[d.id]&&d.id!==c.id)E.push({from:c.id,to:d.id,how:d.how||""})}));
+const usedBy={};E.forEach(e=>(usedBy[e.to]=usedBy[e.to]||[]).push(e));
+
+// layout: lanes
+const LANES=DATA.lanes; const NW=170,NH=46,GX=18,GY=34,LPAD=150,TOP=16;
+function layout(){
+  const pos={};let y=TOP;const lanes=[];
+  const maxW=Math.max(...LANES.map(l=>C.filter(c=>c.layer===l.id&&c.kind!=="flow").length));
+  const perRow=Math.min(maxW,7);
+  LANES.forEach(l=>{
+    const items=C.filter(c=>c.layer===l.id&&c.kind!=="flow");
+    if(!items.length)return;
+    const rows=Math.ceil(items.length/perRow);
+    const h=rows*NH+(rows-1)*14+24;
+    lanes.push({...l,y,h});
+    items.forEach((c,i)=>{const r=Math.floor(i/perRow),k=i%perRow;const n=Math.min(perRow,items.length-r*perRow);
+      const w=perRow*(NW+GX)-GX;const off=(w-(n*(NW+GX)-GX))/2;
+      pos[c.id]={x:LPAD+off+k*(NW+GX),y:y+12+r*(NH+14)}});
+    y+=h+GY;
+  });
+  return {pos,lanes,W:LPAD+perRow*(NW+GX)+10,H:y};
+}
+const L=layout();
+function drawMap(svg,interactive){
+  svg.setAttribute("viewBox",`0 0 ${L.W} ${L.H}`);svg.setAttribute("width",L.W);svg.setAttribute("height",L.H);
+  let h="";
+  L.lanes.forEach(l=>{h+=`<rect class="lane-bg" x="6" y="${l.y}" width="${L.W-12}" height="${l.h}" rx="10"/><text class="lane-label" x="18" y="${l.y+l.h/2+4}">${esc(l.label)}</text>`});
+  E.forEach((e,i)=>{const a=L.pos[e.from],b=L.pos[e.to];if(!a||!b)return;
+    const ax=a.x+NW/2,ay=a.y+(b.y>=a.y?NH:0),bx=b.x+NW/2,by=b.y+(b.y>=a.y?0:NH);
+    const my=(ay+by)/2;const same=Math.abs(a.y-b.y)<2;
+    const d=same?`M${a.x+(b.x>a.x?NW:0)},${a.y+NH/2} C${(a.x+b.x+NW)/2},${a.y-30} ${(a.x+b.x+NW)/2},${a.y-30} ${b.x+(b.x>a.x?0:NW)},${b.y+NH/2}`:`M${ax},${ay} C${ax},${my} ${bx},${my} ${bx},${by}`;
+    h+=`<path class="edge" data-f="${e.from}" data-t="${e.to}" d="${d}"><title>${esc(e.from+" → "+e.to+": "+e.how)}</title></path>`});
+  C.forEach(c=>{const p=L.pos[c.id];if(!p)return;
+    h+=`<g class="node" data-id="${c.id}" transform="translate(${p.x},${p.y})" ${interactive?'tabindex="0" role="button"':''} aria-label="${esc(c.name)}"><rect width="${NW}" height="${NH}" rx="8" style="stroke:${col(c.kind)}"/><rect width="5" height="${NH}" rx="2" style="fill:${col(c.kind)};stroke:none"/><text x="14" y="19">${esc(trunc(c.name,22))}</text><text class="id" x="14" y="35">${esc(trunc((c.gcp&&c.gcp.name)||c.id,26))}</text></g>`});
+  svg.innerHTML=h;
+}
+function trunc(s,n){s=String(s||"");return s.length>n?s.slice(0,n-1)+"…":s}
+const svg=$("#map"),svg2=$("#map2");drawMap(svg,true);drawMap(svg2,false);
+
+function highlight(svgEl,ids,focus){
+  const set=new Set(ids||[]);
+  svgEl.querySelectorAll(".node").forEach(n=>{n.classList.toggle("dim",ids&&!set.has(n.dataset.id));n.classList.toggle("sel",n.dataset.id===focus)});
+  svgEl.querySelectorAll(".edge").forEach(e=>{const f=e.dataset.f,t=e.dataset.t;
+    const out=focus&&f===focus,inn=focus&&t===focus;
+    e.classList.toggle("on",!!out);e.classList.toggle("in",!!inn);
+    e.classList.toggle("dim",!!ids&&!(out||inn||(!focus&&set.has(f)&&set.has(t))))});
+}
+function select(id){
+  const c=byId[id];if(!c)return;
+  const rel=[id,...E.filter(e=>e.from===id).map(e=>e.to),...E.filter(e=>e.to===id).map(e=>e.from)];
+  highlight(svg,rel,id);renderDetail(c);
+  try{history.replaceState(null,"","#"+id.replace(/[^A-Za-z0-9._~-]/g,""))}catch(e){}
+}
+function lensIds(kind,key){
+  if(kind==="dec"){const d=decById[key];const s=new Set(d?d.affects||[]:[]);C.forEach(c=>(c.why||[]).forEach(w=>{if(w.ref===key)s.add(c.id)}));return [...s]}
+  if(kind==="tac"){return C.filter(c=>(c.tactics||[]).includes(key)).map(c=>c.id).concat((decById[key]?.affects)||[])}
+  if(kind==="pat"){return C.filter(c=>(c.patterns||[]).some(p=>p.toLowerCase()===key)).map(c=>c.id)}
+  return null;
+}
+function applyLens(v){if(!v){highlight(svg,null);return}const [k,...r]=v.split(":");highlight(svg,lensIds(k,r.join(":")))}
+const pats=[...new Set(C.flatMap(c=>(c.patterns||[]).map(p=>p.toLowerCase())))].sort();
+const tacs=[...new Set(C.flatMap(c=>c.tactics||[]))].sort();
+$("#lens").insertAdjacentHTML("beforeend",`<optgroup label="Quality scenario">${tacs.map(t=>`<option value="tac:${esc(t)}">${esc(t)} ${esc(decById[t]?.title||"")}</option>`).join("")}</optgroup><optgroup label="Pattern">${pats.map(p=>`<option value="pat:${esc(p)}">${esc(p)}</option>`).join("")}</optgroup>`);
+$("#lens").addEventListener("change",e=>applyLens(e.target.value));
+
+function chipDec(ref){const d=decById[ref];const isT=/^E-0/.test(ref);return `<button class="chip ${isT?"tac":"dec"}" data-lens="${isT?"tac":"dec"}:${esc(ref)}" title="${esc(d?d.title:"")}">${esc(ref)}</button>`}
+function renderDetail(c){
+  const g=c.gcp||{};
+  const out=E.filter(e=>e.from===c.id),inn=usedBy[c.id]||[];
+  $("#detail").innerHTML=`
+  <div class="kind" style="color:${col(c.kind)}">${esc(c.kind)} · ${esc((LANES.find(l=>l.id===c.layer)||{}).label||c.layer)}</div>
+  <h2>${esc(c.name)}</h2><div class="cid">${esc(c.id)}</div>
+  <h3>What it is</h3><p>${esc(c.what)}</p>
+  <h3>What it serves</h3><p>${esc(c.serves)}</p>
+  ${(c.why||[]).length?`<h3>Why it exists</h3><ul class="rel">${c.why.map(w=>`<li><span>${chipDec(w.ref)} ${esc(decById[w.ref]?.title||"")}</span><small>${esc(w.note)}</small></li>`).join("")}</ul>`:""}
+  ${(c.patterns||[]).length||(c.tactics||[]).length?`<h3>Patterns and scenarios</h3><div class="chips">${(c.patterns||[]).map(p=>`<button class="chip" data-lens="pat:${esc(p.toLowerCase())}">${esc(p)}</button>`).join("")}${(c.tactics||[]).map(chipDec).join("")}</div>`:""}
+  ${g.type||g.name?`<h3>On GCP</h3><dl class="kv">${g.type?`<dt>Type</dt><dd>${esc(g.type)}</dd>`:""}${g.name?`<dt>Name</dt><dd class="path">${esc(g.name)}</dd>`:""}${g.config?`<dt>Config</dt><dd>${esc(g.config)}</dd>`:""}${g.state?`<dt>State</dt><dd>${esc(g.state)}</dd>`:""}</dl>`:""}
+  ${(c.declaredIn||[]).length||c.code||(c.contracts||[]).length?`<h3>Where it is declared</h3><div class="list" style="gap:3px">${[c.code&&("code: "+c.code),...(c.contracts||[]).map(x=>"contract: "+x),...(c.declaredIn||[])].filter(Boolean).map(p=>`<div class="path">${esc(p)}</div>`).join("")}</div>`:""}
+  <h3>Depends on</h3>${out.length?`<ul class="rel">${out.map(e=>`<li><button class="chip" data-go="${e.to}">${esc(byId[e.to].name)}</button><small>${esc(e.how)}</small></li>`).join("")}</ul>`:`<p class="empty">Nothing in the map.</p>`}
+  <h3>Used by</h3>${inn.length?`<ul class="rel">${inn.map(e=>`<li><button class="chip" data-go="${e.from}">${esc(byId[e.from].name)}</button><small>${esc(e.how)}</small></li>`).join("")}</ul>`:`<p class="empty">Nothing in the map.</p>`}
+  ${c.observed?`<h3>Seen on dev</h3><div class="obs">${esc(c.observed)}</div>`:""}
+  ${(c.gotchas||[]).length?`<h3>Know this</h3>${c.gotchas.map(x=>`<div class="gotcha">${esc(x)}</div>`).join("")}`:""}`;
+}
+document.addEventListener("click",e=>{
+  const n=e.target.closest("#map .node");if(n){select(n.dataset.id);return}
+  const g=e.target.closest("[data-go]");if(g){showView("map");select(g.dataset.go);return}
+  const l=e.target.closest("[data-lens]");if(l){showView("map");const v=l.dataset.lens;$("#lens").value=[...$("#lens").options].some(o=>o.value===v)?v:"";applyLens(v);if(v.startsWith("dec:"))renderDecision(v.slice(4));return}
+});
+svg.addEventListener("keydown",e=>{const n=e.target.closest(".node");if(n&&(e.key==="Enter"||e.key===" ")){e.preventDefault();select(n.dataset.id)}});
+function renderDecision(id){const d=decById[id];if(!d)return;
+  $("#detail").innerHTML=`<div class="kind" style="color:var(--accent)">decision · ${esc(d.kind)}</div><h2>${esc(d.id)} · ${esc(d.title)}</h2><div class="cid"><span class="badge ${esc(d.status)}">${esc(d.status)}</span> ${esc(d.date||"")}</div>
+  <h3>Decision</h3><p>${esc(d.decision)}</p><h3>Why</h3><p>${esc(d.why)}</p>
+  ${d.alternatives?`<h3>Alternatives</h3><p>${esc(d.alternatives)}</p>`:""}${d.consequences?`<h3>Consequences</h3><p>${esc(d.consequences)}</p>`:""}
+  <h3>Touches</h3><div class="chips">${lensIds("dec",d.id).filter(x=>byId[x]).map(x=>`<button class="chip" data-go="${x}">${esc(byId[x].name)}</button>`).join("")||'<span class="empty">No component in the map.</span>'}</div>
+  <h3>Source</h3><div class="path">${esc(d.source)}</div>`}
+$("#q").addEventListener("input",e=>{const q=e.target.value.trim().toLowerCase();if(!q){highlight(svg,null);return}
+  highlight(svg,C.filter(c=>JSON.stringify(c).toLowerCase().includes(q)).map(c=>c.id))});
+
+// tabs
+function showView(v){document.querySelectorAll("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.view===v));
+  document.querySelectorAll(".view").forEach(s=>s.hidden=s.id!=="v-"+v);try{localStorage.setItem("atlas-view",v)}catch(e){}}
+document.querySelectorAll("nav.tabs button").forEach(b=>b.addEventListener("click",()=>showView(b.dataset.view)));
+
+// flow
+const steps=DATA.flow||[];
+$("#steps").innerHTML=steps.map((s,i)=>`<div class="step" data-i="${i}" tabindex="0"><b>${i+1}</b><div><div style="font-weight:600">${esc(s.title)}</div><div style="color:var(--muted);font-size:13.5px">${esc(s.detail)}</div><div class="chips" style="margin-top:6px">${(s.components||[]).filter(x=>byId[x]).map(x=>`<span class="chip plain">${esc(byId[x].name)}</span>`).join("")}</div></div></div>`).join("");
+function flowStep(i){document.querySelectorAll(".step").forEach(s=>s.setAttribute("aria-current",String(+s.dataset.i===i)));highlight(svg2,steps[i].components||[])}
+$("#steps").addEventListener("click",e=>{const s=e.target.closest(".step");if(s)flowStep(+s.dataset.i)});
+$("#steps").addEventListener("keydown",e=>{const s=e.target.closest(".step");if(s&&(e.key==="Enter"||e.key===" ")){e.preventDefault();flowStep(+s.dataset.i)}});
+if(steps.length)flowStep(0);
+
+// scenarios
+$("#scen").innerHTML=(DATA.scenarios||[]).map(s=>`<div class="card"><div class="row"><span class="lbl">${esc(s.id)} · ${esc(s.attribute||"")}</span><span class="badge ${s.met==="yes"?"accepted":s.met==="partial"?"deferred":"dropped"}">${esc(s.metLabel||"")}</span></div><h4>${esc(s.name)}</h4>
+<dl class="kv"><dt>Target</dt><dd>${esc(s.target)}</dd><dt>Tactic in slice</dt><dd>${esc(s.tactic)}</dd>${s.dropped?`<dt>Dropped</dt><dd>${esc(s.dropped)}</dd>`:""}<dt>Measured</dt><dd>${esc(s.result)}</dd><dt>Evidence</dt><dd class="path">${esc(s.evidence)}</dd></dl>
+<div class="chips" style="margin-top:8px"><button class="chip tac" data-lens="tac:${esc(s.id)}">Show on map</button></div></div>`).join("");
+
+// decisions
+const kinds=[...new Set(D.map(d=>d.kind))].sort();$("#dkind").insertAdjacentHTML("beforeend",kinds.map(k=>`<option>${esc(k)}</option>`).join(""));
+function renderDecs(){const q=$("#dq").value.trim().toLowerCase(),k=$("#dkind").value;
+  $("#decs").innerHTML=D.filter(d=>(!k||d.kind===k)&&(!q||JSON.stringify(d).toLowerCase().includes(q))).map(d=>`<div class="card"><div class="row"><span class="lbl">${esc(d.id)} · ${esc(d.kind)}</span><span class="badge ${esc(d.status)}">${esc(d.status)}</span><span class="path" style="color:var(--muted)">${esc(d.source)}</span></div><h4>${esc(d.title)}</h4><p style="margin:0 0 4px">${esc(d.decision)}</p><p style="margin:0;color:var(--muted);font-size:13.5px">${esc(d.why)}</p>${d.consequences?`<p style="margin:4px 0 0;font-size:13.5px"><span class="lbl">Trade-off</span> ${esc(d.consequences)}</p>`:""}<div class="chips" style="margin-top:8px"><button class="chip dec" data-lens="dec:${esc(d.id)}">Show on map</button>${lensIds("dec",d.id).filter(x=>byId[x]).slice(0,10).map(x=>`<button class="chip" data-go="${x}">${esc(byId[x].name)}</button>`).join("")}</div></div>`).join("")||'<p class="empty">No decision matches.</p>'}
+$("#dq").addEventListener("input",renderDecs);$("#dkind").addEventListener("change",renderDecs);renderDecs();
+
+// lineage
+const LN=DATA.lineage||{};
+$("#lin").innerHTML=`
+<div class="cols2" style="margin-bottom:16px">${(LN.deliveries||[]).map(d=>`<div class="card"><span class="lbl">${esc(d.id)}</span><h4>${esc(d.title)}</h4><p style="margin:0 0 6px">${esc(d.summary)}</p><ul style="margin:0;padding-left:18px;font-size:13.5px">${(d.keyPoints||[]).map(k=>`<li>${esc(k)}</li>`).join("")}</ul></div>`).join("")}</div>
+<h3 class="lbl" style="margin:18px 0 8px">Target architecture (Delivery 2) → this slice</h3>
+<div class="tbox"><table class="t"><thead><tr><th>Designed component</th><th>Role</th><th>In slice</th><th>Became</th><th>Why</th></tr></thead><tbody>${(LN.targetComponents||[]).map(t=>`<tr><td>${esc(t.name)}</td><td>${esc(t.role)}</td><td class="${t.inSlice==="yes"?"yes":t.inSlice==="replaced"?"partial":"no"}">${esc(t.inSlice)}</td><td>${(t.sliceIds||[]).filter(x=>byId[x]).map(x=>`<button class="chip" data-go="${x}">${esc(byId[x].name)}</button>`).join(" ")}</td><td>${esc(t.note)}</td></tr>`).join("")}</tbody></table></div>
+<h3 class="lbl" style="margin:18px 0 8px">Requirements (Delivery 1) in the slice</h3>
+<div class="tbox" style="margin-bottom:16px"><table class="t"><thead><tr><th>Id</th><th>Requirement</th><th>In slice</th><th>Realized by</th><th>Note</th></tr></thead><tbody>${(LN.requirements||[]).map(r=>`<tr><td class="path">${esc(r.id)}</td><td>${esc(r.text)}</td><td class="${r.inSlice}">${esc(r.inSlice)}</td><td>${(r.realizedBy||[]).filter(x=>byId[x]).map(x=>`<button class="chip" data-go="${x}">${esc(byId[x].name)}</button>`).join(" ")}</td><td>${esc(r.note)}</td></tr>`).join("")}</tbody></table></div>
+<h3 class="lbl" style="margin:18px 0 8px">Still open</h3>
+<p class="intro">Known gaps after the doc cleanup of Oct 9 (PRs #42 and #43). None blocks the demo; each is worth a sentence in the artifact.</p>
+<div class="cols2">${(DATA.notes||[]).map(n=>`<div class="card"><span class="lbl">${esc(n.from)}</span><p style="margin:6px 0 0;font-size:13.5px;white-space:pre-line">${esc(n.text)}</p></div>`).join("")}</div>`;
+
+// initial state
+let start=(location.hash||"").slice(1);if(!byId[start])start=DATA.start||C[0].id;select(start);
+try{const v=localStorage.getItem("atlas-view");if(v&&document.getElementById("v-"+v))showView(v)}catch(e){}
+})();
+</script>

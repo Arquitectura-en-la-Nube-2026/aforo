@@ -1,0 +1,1027 @@
+{
+  "components": [
+    {
+      "id": "svc-gateway",
+      "name": "Gateway",
+      "kind": "service",
+      "layer": "edge",
+      "what": "NestJS (Fastify) API gateway: simulated login (HS256 JWT, sub = UUID v5 of the email), session validation, correlation IDs, per-IP quota on queue routes, and a fixed-route proxy to every backend. The only public entry for the API.",
+      "serves": "Public: POST /api/v1/auth/login; GET /api/v1/events[/{id}], POST /api/v1/events, PUT .../sales-rules, POST .../publish (Catalog); GET /api/v1/events/{id}/availability (Inventory); POST /api/v1/queue/{id}/join, GET .../status, GET .../stream SSE (Queue); POST/GET /api/v1/orders[/{id}], POST /api/v1/orders/{id}/payment-intents, POST /api/v1/payments/webhook (Orders); GET /mock-gateway/checkout/{paymentId}[/complete] (mock). Internal: none; /internal/v1/** of backends is never reachable. Health: /health/live, /health/ready.",
+      "why": [
+        {
+          "ref": "D-06",
+          "note": "Login is simulated by the Gateway (no password, no IdP); token keeps an OIDC shape so switching is config."
+        },
+        {
+          "ref": "R-02",
+          "note": "sub is a UUID v5 of the lower-cased email so the same person keeps the same userId (services/gateway/src/auth/login.service.ts#L26)."
+        },
+        {
+          "ref": "D-07",
+          "note": "X-Queue-Pass is forwarded and logged, never verified."
+        },
+        {
+          "ref": "ADR-0001",
+          "note": "Per-IP quota counters live in Memorystore; quota fails open while Redis is off (REDIS_URL empty)."
+        },
+        {
+          "ref": "D-21",
+          "note": "The prewarmer owns gateway's service-level minimum instances; Terraform ignores min_instance_count."
+        },
+        {
+          "ref": "ADR-0005",
+          "note": "Max 3 instances; no DB."
+        },
+        {
+          "ref": "D-13",
+          "note": "Request timeout 3600 s so the proxied queue SSE stream is not cut every minute (infra/envs/dev/services.tf#L45)."
+        },
+        {
+          "ref": "D-19",
+          "note": "Deployed by digest with blue/green revision tags."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/services.tf#L36",
+        "infra/modules/cloud-run-service/main.tf",
+        "services/gateway/README.md"
+      ],
+      "code": "services/gateway",
+      "contracts": [
+        "contracts/openapi/gateway.yaml",
+        "contracts/conventions.md"
+      ],
+      "gcp": {
+        "type": "Cloud Run service",
+        "name": "aforo-gateway",
+        "config": "1 vCPU / 512Mi, template min 0 / max 3, concurrency 80, request timeout 3600 s, CPU throttled (request-based), startup CPU boost, ingress all (public, allUsers invoker), Direct VPC egress private-ranges-only to aforo-vpc (for Memorystore), SA aforo-gateway-run@, custom audience aforo-gateway, AUTH_SECRET from Secret Manager, startup probe /health/live.",
+        "state": "Oct 9 describe: service-level minScale unset (0); 100% on aforo-gateway-00023-xdl (created 2026-10-09T14:16Z by Terraform at make down, same digest sha256:b9fe085d... as tag sha-6e69b9f / 00025-jiw); REDIS_URL empty. Older tagged revisions kept for rollback."
+      },
+      "dependsOn": [
+        {
+          "id": "svc-catalog",
+          "how": "Sync REST /api/v1/events/** with Google ID token, audience aforo-catalog, timeout 2.5 s (services/gateway/src/catalog/catalog-proxy.service.ts#L12)"
+        },
+        {
+          "id": "svc-queue",
+          "how": "Sync REST join/status and unbuffered SSE stream, audience aforo-queue, 8 s header timeout (services/gateway/src/queue/queue-proxy.service.ts#L17)"
+        },
+        {
+          "id": "svc-orders",
+          "how": "Sync REST /api/v1/orders/** and raw-body webhook passthrough, audience aforo-orders, timeout 15 s (services/gateway/src/orders/orders-proxy.controller.ts#L18)"
+        },
+        {
+          "id": "svc-inventory",
+          "how": "Sync REST GET /api/v1/events/{id}/availability, audience aforo-inventory, 2.5 s (services/gateway/src/inventory/availability-proxy.controller.ts#L8)"
+        },
+        {
+          "id": "fn-mock-payment-gateway",
+          "how": "Sync REST GET /checkout/{paymentId}[/complete], ID token for the function URL, 10 s (services/gateway/src/mock-gateway/mock-gateway-proxy.controller.ts#L15)"
+        },
+        {
+          "id": "data-memorystore",
+          "how": "Redis over Direct VPC egress for per-IP quota counters (fails open when absent)"
+        },
+        {
+          "id": "infra-secrets",
+          "how": "AUTH_SECRET (JWT signing key) from Secret Manager"
+        },
+        {
+          "id": "lib-common",
+          "how": "errors, correlation, logging, health, shutdown"
+        }
+      ],
+      "patterns": [
+        "API gateway",
+        "simulated auth (JWT issuer)",
+        "correlation ID propagation",
+        "rate limiting (fail open)",
+        "service-to-service OIDC",
+        "non-generic fixed-route proxy",
+        "graceful shutdown (drains SSE)"
+      ],
+      "tactics": [
+        "E-01",
+        "E-03",
+        "E-05",
+        "E-07"
+      ],
+      "observed": "Carried every dev run on Oct 8-9 (docs/evidence/happy-path/README.md). E-01: minimum 0 -> 1 at 13:38:39 and back to 0 at 13:46:37 on Oct 9 (docs/evidence/e01-prewarming/README.md). E-02 burst through gateway: p95 1643 ms with 3 instances and 2 cold starts; metered p95 364 ms (docs/evidence/e02-concurrency/README.md). Bug #39: webhook 200 with empty body became a 500, Cloud Tasks retried 5x (fixed). Bug #40: first queue join after idle failed on 2.5 s timeout vs ~3.2 s queue cold start (fixed with 8 s).",
+      "gotchas": [
+        "Upstream timeouts above the 2.5 s convention: orders 15 s, mock pages 10 s, queue 8 s (docs/status/2026-10-08-done.md).",
+        "Default quota RATE_LIMIT_DEFAULT_PER_MIN is configured but not implemented (services/gateway/README.md).",
+        "Queue quota fails open while Memorystore is off and runs before the session check.",
+        "X-Queue-Pass forwarded, never verified (D-07).",
+        "Always open the web at its run.app URL: FRONTEND_ORIGIN drives CORS.",
+        "Mock function has no custom audience: ID token audience is its URL."
+      ]
+    },
+    {
+      "id": "svc-catalog",
+      "name": "Catalog",
+      "kind": "service",
+      "layer": "core",
+      "what": "NestJS service owning events, sectors, sales window and sales rules in PostgreSQL (db-catalog). The only service that decides whether a sale is open (saleState derived from the server clock).",
+      "serves": "Public (via Gateway): GET /api/v1/events?status=PUBLISHED, GET /api/v1/events/{eventId}, POST /api/v1/events, PUT /api/v1/events/{eventId}/sales-rules, POST /api/v1/events/{eventId}/publish. Internal: POST /internal/v1/housekeeping (outbox flush, no sweeps). Also the seed job (three demo events).",
+      "why": [
+        {
+          "ref": "D-08",
+          "note": "No organizer UI; events come from the seed and Postman/API."
+        },
+        {
+          "ref": "RD-03",
+          "note": "No other service reads this DB; capacity and price reach Inventory and Queue by events."
+        },
+        {
+          "ref": "ADR-0002",
+          "note": "Outbox flushed after commit, plus the one-minute housekeeping call; no poller."
+        },
+        {
+          "ref": "ADR-0005",
+          "note": "Max 2 instances x DB pool 2 = 4 connections."
+        },
+        {
+          "ref": "ADR-0001",
+          "note": "Seed re-emits EventPublished/SalesRulesConfigured on every run so Queue can rebuild its projection in a fresh Memorystore."
+        },
+        {
+          "ref": "D-19",
+          "note": "Migrations run as Cloud Run job aforo-catalog-migrate before the traffic shift."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/services.tf#L73",
+        "infra/envs/dev/scheduler.tf",
+        "infra/envs/dev/messaging.tf#L22",
+        "services/catalog/README.md"
+      ],
+      "code": "services/catalog",
+      "contracts": [
+        "contracts/openapi/catalog.yaml",
+        "contracts/events/"
+      ],
+      "gcp": {
+        "type": "Cloud Run service",
+        "name": "aforo-catalog",
+        "config": "1 vCPU / 512Mi, min 0 / max 2, concurrency 80, timeout 60 s, CPU throttled, ingress all but IAM-private (invokers: gateway SA, aforo-scheduler), SA aforo-catalog-run@, custom audience aforo-catalog, Cloud SQL socket aforo-pg, DATABASE_URL from Secret Manager, DB_POOL_MAX 2. Jobs aforo-catalog-migrate and aforo-catalog-seed.",
+        "state": "Oct 9 describe: 100% on aforo-catalog-00004-rh9 (Terraform config revision 2026-10-09T00:31Z, digest sha256:1191866d..., tag sha-77eabb4 on 00004-ted); service-level minScale unset."
+      },
+      "dependsOn": [
+        {
+          "id": "db-catalog",
+          "how": "Cloud SQL Postgres via Unix socket, pool 2"
+        },
+        {
+          "id": "topic-event-published",
+          "how": "publishes EventPublished through the outbox (aforo.catalog.event-published)"
+        },
+        {
+          "id": "topic-sales-rules-configured",
+          "how": "publishes SalesRulesConfigured through the outbox (aforo.catalog.sales-rules-configured)"
+        },
+        {
+          "id": "sched-housekeeping",
+          "how": "Cloud Scheduler POST /internal/v1/housekeeping every minute, OIDC audience aforo-catalog"
+        },
+        {
+          "id": "lib-common",
+          "how": "OutboxModule, IdempotencyInterceptor, HousekeepingModule, errors, logging, health"
+        },
+        {
+          "id": "svc-gateway",
+          "how": "called by: every public route arrives from the Gateway"
+        },
+        {
+          "id": "svc-inventory",
+          "how": "consumer of its events: inventory-event-published, inventory-sales-rules (push)"
+        },
+        {
+          "id": "svc-queue",
+          "how": "consumer of its events: queue-event-published, queue-sales-rules (push, only while Memorystore is on)"
+        },
+        {
+          "id": "fn-prewarmer",
+          "how": "consumer of EventPublished: prewarmer-event-published (push)"
+        }
+      ],
+      "patterns": [
+        "transactional outbox",
+        "idempotency key",
+        "conditional update (DRAFT -> PUBLISHED)",
+        "DB trigger guarding transitions",
+        "database per service",
+        "derived state (saleState from clock)",
+        "idempotent seed"
+      ],
+      "tactics": [
+        "E-01",
+        "E-03",
+        "E-05",
+        "E-07"
+      ],
+      "observed": "Seed ran as Cloud Run job and its facts reached inventory and queue with one correlationId (docs/evidence/happy-path/README.md step 10). E-01 publish at 13:38:36.9 on Oct 9 triggered the prewarmer within 1 s (docs/evidence/e01-prewarming/README.md). E-05 poison message on aforo.catalog.event-published dead-lettered on 3 consumer subscriptions (docs/status/2026-10-08-done.md).",
+      "gotchas": [
+        "No roles: any signed-in user can create, configure and publish (D-06, D-08).",
+        "Publishing an already PUBLISHED event returns 200 and emits nothing; the seed is what re-emits.",
+        "Seed dates are fixed; valid until Nov 1, 2026 (then the prewarmer would schedule the Concierto warm-up) and Festival closes Nov 14.",
+        "No delete: every E-01 demo leaves one more published event.",
+        "Re-seed does not reset inventory capacity/available."
+      ]
+    },
+    {
+      "id": "svc-queue",
+      "name": "Queue (waiting room)",
+      "kind": "service",
+      "layer": "core",
+      "what": "NestJS service holding the virtual waiting room in Redis (Memorystore): ordered join (RF-05), batched admission (RF-06), opaque 10-minute pass, and position over SSE. No relational DB.",
+      "serves": "Public (via Gateway): POST /api/v1/queue/{eventId}/join, GET .../status, GET .../stream (SSE). Internal: POST /internal/v1/events/queue-event-published, POST /internal/v1/events/queue-sales-rules (Pub/Sub push). No housekeeping endpoint.",
+      "why": [
+        {
+          "ref": "ADR-0001",
+          "note": "Store is Memorystore Basic 1 GB, created only for live tests and demos; service boots without it (/health/ready 503, queue routes 500 INTERNAL)."
+        },
+        {
+          "ref": "D-15",
+          "note": "Redis on Cloud Run was superseded by ADR-0001 (no TCP ingress)."
+        },
+        {
+          "ref": "ADR-0002",
+          "note": "Admission is an in-process timer; allowed only because queue has CPU always allocated; a Redis tick lock makes one instance admit per tick."
+        },
+        {
+          "ref": "D-12",
+          "note": "Admission releases ADMISSION_BATCH_SIZE (500) every ADMISSION_INTERVAL_SECONDS (5)."
+        },
+        {
+          "ref": "R-05",
+          "note": "Admission parameters are env vars, not sales rules."
+        },
+        {
+          "ref": "D-13",
+          "note": "Position over SSE with 3 s status polling as plan B (implemented in the web)."
+        },
+        {
+          "ref": "D-07",
+          "note": "Pass is opaque, unsigned, never verified downstream."
+        },
+        {
+          "ref": "D-21",
+          "note": "Prewarmer raises its service-level min instances to 1 during a sales window."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/services.tf#L101",
+        "infra/envs/dev/messaging.tf#L18",
+        "services/queue/README.md"
+      ],
+      "code": "services/queue",
+      "contracts": [
+        "contracts/openapi/queue.yaml",
+        "contracts/events/"
+      ],
+      "gcp": {
+        "type": "Cloud Run service",
+        "name": "aforo-queue",
+        "config": "1 vCPU / 512Mi, min 0 / max 2, concurrency 250, request timeout 3600 s, CPU always allocated (cpu-throttling false), ingress all but IAM-private (invokers: gateway SA, aforo-pubsub-push), Direct VPC egress private-ranges-only, SA aforo-queue-run@, custom audience aforo-queue, PASS_TTL_SECONDS 600, SSE_HEARTBEAT_SECONDS 15.",
+        "state": "Oct 9 describe: 100% on aforo-queue-00010-7pv (Terraform revision 2026-10-09T14:15Z at make down, same digest sha256:2be75d3a... as tag sha-21e03d6); REDIS_URL empty; service-level minScale unset; queue-* push subscriptions absent while redis_enabled is false."
+      },
+      "dependsOn": [
+        {
+          "id": "data-memorystore",
+          "how": "Redis over Direct VPC egress: sorted set queue:{eventId}, admitted:{eventId}:{userId}, event:{eventId} projection, inbox:{messageId}, admission tick lock"
+        },
+        {
+          "id": "topic-event-published",
+          "how": "consumes EventPublished via push subscription queue-event-published (OIDC aforo-pubsub-push, audience aforo-queue)"
+        },
+        {
+          "id": "topic-sales-rules-configured",
+          "how": "consumes SalesRulesConfigured via push subscription queue-sales-rules"
+        },
+        {
+          "id": "svc-gateway",
+          "how": "called by: join/status/stream proxied with audience aforo-queue"
+        },
+        {
+          "id": "fn-prewarmer",
+          "how": "called by: Cloud Run Admin API sets service-level minScale 0 <-> 1"
+        },
+        {
+          "id": "lib-common",
+          "how": "envelope (@PushEnvelope), errors, logging, health, shutdown; not inbox/outbox (uses a Redis Lua script instead)"
+        }
+      ],
+      "patterns": [
+        "virtual waiting room",
+        "atomic Redis Lua scripts (services/queue/src/queue/queue-scripts.ts)",
+        "distributed tick lock SET NX (services/queue/src/queue/admission.service.ts#L55)",
+        "inbox via Redis Lua (dedup + out-of-order skip)",
+        "local projection (event-carried state)",
+        "SSE",
+        "natural idempotency (ZADD NX)"
+      ],
+      "tactics": [
+        "E-01",
+        "E-02",
+        "E-03",
+        "E-07"
+      ],
+      "observed": "Happy path Oct 9: position 1, admitted ~2 s after joining (docs/evidence/happy-path/README.md). E-01: join at the opening 550 ms warm vs 4070 ms cold (docs/evidence/e01-prewarming/README.md). E-02 metered at 20/s (as the room releases buyers) gave inventory p95 75 ms vs 808 ms for a burst (docs/evidence/e02-concurrency/README.md).",
+      "gotchas": [
+        "admission.service.ts uses setInterval: the one deliberate in-process timer, valid only with CPU always allocated.",
+        "Deploy needs Memorystore on: CI smoke test checks /health/ready, which is 503 without Redis.",
+        "Every Memorystore creation starts empty: positions are lost and the catalog seed must re-run to rebuild the projection.",
+        "Cold start ~3.2 s caused the gateway timeout bug #40.",
+        "Pass expiry sends the buyer to the end of the queue; not renewed.",
+        "README status lines ('not yet run on GCP', make seed TODO) are stale: it ran on dev Oct 8-9.",
+        "CI has no Redis service, so the Redis tests skip there."
+      ]
+    },
+    {
+      "id": "svc-orders",
+      "name": "Orders",
+      "kind": "service",
+      "layer": "core",
+      "what": "NestJS service owning orders and payments in PostgreSQL (db-orders); orchestrates the purchase saga (reserve -> pay -> confirm or refund) and reaches the payment gateway only through a resilient adapter (ACL).",
+      "serves": "Public (via Gateway): POST /api/v1/orders, GET /api/v1/orders, GET /api/v1/orders/{orderId}, POST /api/v1/orders/{orderId}/payment-intents, POST /api/v1/payments/webhook (HMAC). Internal: POST /internal/v1/events/orders-reservation-expired (push), POST /internal/v1/housekeeping (outbox flush + refund retry sweep).",
+      "why": [
+        {
+          "ref": "D-16",
+          "note": "Payment mock moved out of Orders into a function, reached through the payment adapter (Anti-Corruption Layer)."
+        },
+        {
+          "ref": "D-18",
+          "note": "Adapter applies timeouts (0.5 s connect, 2 s response), circuit breaker (5 failures, half-open 30 s) and retry with exponential backoff and jitter."
+        },
+        {
+          "ref": "ADR-0005",
+          "note": "Max 1 instance so the demo shows a single in-memory breaker; pool 3."
+        },
+        {
+          "ref": "ADR-0002",
+          "note": "Webhook is processed synchronously; refunds retried by housekeeping."
+        },
+        {
+          "ref": "ADR-0003",
+          "note": "Reservation expiry is never extended; late APPROVED on an expired reservation goes to REFUND_PENDING."
+        },
+        {
+          "ref": "D-07",
+          "note": "X-Queue-Pass logged (event=queue_pass_received) and ignored."
+        },
+        {
+          "ref": "R-06",
+          "note": "Replays carry Idempotent-Replayed: true."
+        },
+        {
+          "ref": "D-19",
+          "note": "Used for the blue/green + migrate-job + rollback evidence."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/services.tf#L130",
+        "infra/envs/dev/messaging.tf#L74",
+        "infra/envs/dev/scheduler.tf",
+        "services/orders/README.md"
+      ],
+      "code": "services/orders",
+      "contracts": [
+        "contracts/openapi/orders.yaml",
+        "contracts/events/"
+      ],
+      "gcp": {
+        "type": "Cloud Run service",
+        "name": "aforo-orders",
+        "config": "1 vCPU / 512Mi, min 0 / max 1, concurrency 80, timeout 60 s, CPU throttled, ingress all but IAM-private (invokers: gateway SA, aforo-pubsub-push, aforo-scheduler), SA aforo-orders-run@, custom audience aforo-orders, Cloud SQL socket aforo-pg, DATABASE_URL and WEBHOOK_SECRET from Secret Manager, DB_POOL_MAX 3, CB_FAILURE_THRESHOLD 5, CB_RESET_TIMEOUT_MS 30000, RETRY 3 attempts 200-5000 ms. Job aforo-orders-migrate.",
+        "state": "Oct 9 describe: 100% on aforo-orders-00009-guv (tag sha-1b8ce63, digest sha256:b6a6cf56..., deployed by CI 14:01Z); older 00005-zod (sha-77eabb4, never served) and 00006-guh (sha-a44ee7e) kept tagged; service-level minScale unset."
+      },
+      "dependsOn": [
+        {
+          "id": "svc-inventory",
+          "how": "Sync REST POST /internal/v1/reservations and /{id}/confirm with OIDC audience aforo-inventory, forwarding Idempotency-Key and X-Correlation-Id (services/orders/src/inventory-client/inventory.client.ts#L21)"
+        },
+        {
+          "id": "fn-mock-payment-gateway",
+          "how": "Sync REST POST /payments and refunds through the payment adapter, ID token for the function URL (services/orders/src/payments/http-payment-gateway.ts)"
+        },
+        {
+          "id": "db-orders",
+          "how": "Cloud SQL Postgres via Unix socket, pool 3"
+        },
+        {
+          "id": "topic-order-paid",
+          "how": "publishes OrderPaid through the outbox; no subscriber in this slice"
+        },
+        {
+          "id": "topic-reservation-expired",
+          "how": "consumes ReservationExpired via push subscription orders-reservation-expired (OIDC aforo-pubsub-push, audience aforo-orders)"
+        },
+        {
+          "id": "tq-payment-webhooks",
+          "how": "called by: the mock's delayed webhook arrives through Cloud Tasks -> Gateway -> POST /api/v1/payments/webhook (HMAC X-Signature)"
+        },
+        {
+          "id": "sched-housekeeping",
+          "how": "Cloud Scheduler POST /internal/v1/housekeeping every minute, audience aforo-orders"
+        },
+        {
+          "id": "infra-secrets",
+          "how": "DATABASE_URL, WEBHOOK_SECRET"
+        },
+        {
+          "id": "lib-common",
+          "how": "IdempotencyInterceptor, OutboxModule, HousekeepingModule (RefundSweep), PushEnvelope, auth, errors, logging, health, shutdown"
+        }
+      ],
+      "patterns": [
+        "orchestrated saga",
+        "anti-corruption layer (PaymentGateway port + HTTP adapter)",
+        "circuit breaker (cockatiel ConsecutiveBreaker, services/orders/src/payments/resilience.ts#L51)",
+        "retry with exponential backoff (services/orders/src/payments/resilience.ts#L65)",
+        "timeouts",
+        "transactional outbox",
+        "inbox (webhook notificationId and Pub/Sub messageId, services/orders/src/messaging/repositories.ts#L32)",
+        "idempotency key",
+        "conditional update (services/orders/src/orders/orders.repository.ts#L87)",
+        "HMAC-signed webhook over raw body (services/orders/src/payments/webhook-signature.ts)",
+        "DB triggers guarding transitions",
+        "graceful degradation (503 PAYMENT_UNAVAILABLE)"
+      ],
+      "tactics": [
+        "E-03",
+        "E-05",
+        "E-06",
+        "E-07"
+      ],
+      "observed": "Happy path: PAID 4.7 s after Pay, OrderPaid published once (docs/evidence/happy-path/README.md). E-06 Oct 9 03:28-03:33Z: circuit opened on the 5th failed attempt, open-circuit failures ~10 ms, recovered OPEN -> HALF_OPEN -> CLOSED at 03:32:36 (docs/evidence/e06-circuit-breaker/README.md). Same webhook delivered 5x absorbed: one PAID, one OrderPaid (docs/evidence/fails-well/README.md). 10 orders EXPIRED via ReservationExpired push (docs/evidence/reliability-expiry/README.md). Blue/green dispatch to 100% in 3 min 6 s, rollback 8.3 s (docs/evidence/deployment/README.md).",
+      "gotchas": [
+        "Breaker state is per instance in memory; only deterministic because max instances = 1.",
+        "Half-open probe re-opened once on the mock's cold start (2.8 s > 2 s timeout); warm the mock before the demo.",
+        "A timed-out call can still create a payment in the mock that Orders never sees.",
+        "Bug #38: image did not boot (dependency missing); the revision never got traffic.",
+        "OrderPaid is published but nobody consumes it.",
+        "Gateway must wait 15 s for payment-intents (3 attempts x 2.5 s + backoff).",
+        "README status 'not yet deployed' is stale."
+      ]
+    },
+    {
+      "id": "svc-inventory",
+      "name": "Inventory",
+      "kind": "service",
+      "layer": "core",
+      "what": "NestJS service owning seat availability and reservations in PostgreSQL (db-inventory). The place where a race turns into lost money: the conditional seat decrement guarantees zero overselling (E-02).",
+      "serves": "Public (via Gateway): GET /api/v1/events/{eventId}/availability. Internal: POST /internal/v1/reservations, POST /internal/v1/reservations/{id}/confirm, /release, /expire (Cloud Tasks target), POST /internal/v1/events/inventory-event-published and /inventory-sales-rules (push), POST /internal/v1/housekeeping (expiry sweep + outbox flush).",
+      "why": [
+        {
+          "ref": "D-20",
+          "note": "The 200-on-10 concurrency test is not cuttable: it is E-02's running evidence."
+        },
+        {
+          "ref": "ADR-0003",
+          "note": "Expiry by a named Cloud Tasks task per reservation plus a one-minute sweep; expire requires expires_at <= now()."
+        },
+        {
+          "ref": "ADR-0002",
+          "note": "No in-process timers in dev; housekeeping drives the sweep and outbox flush."
+        },
+        {
+          "ref": "ADR-0005",
+          "note": "3 instances x 80 concurrency x pool 2 = 6 DB connections (aggregate concurrency limit)."
+        },
+        {
+          "ref": "ADR-0006",
+          "note": "No sharding; event_id leads every key so it can be the partition key."
+        },
+        {
+          "ref": "RD-03",
+          "note": "Sectors, prices and rules come from Catalog events, never queried."
+        },
+        {
+          "ref": "D-07",
+          "note": "Does not verify the queue pass."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/services.tf#L166",
+        "infra/envs/dev/tasks.tf#L9",
+        "infra/envs/dev/messaging.tf#L74",
+        "services/inventory/README.md"
+      ],
+      "code": "services/inventory",
+      "contracts": [
+        "contracts/openapi/inventory.yaml",
+        "contracts/events/"
+      ],
+      "gcp": {
+        "type": "Cloud Run service",
+        "name": "aforo-inventory",
+        "config": "1 vCPU / 512Mi, min 0 / max 3, concurrency 80, timeout 60 s, CPU throttled, ingress all but IAM-private (invokers: gateway SA, orders SA, aforo-pubsub-push, aforo-scheduler, aforo-tasks-invoker), SA aforo-inventory-run@, custom audience aforo-inventory, Cloud SQL socket aforo-pg, DB_POOL_MAX 2, EXPIRY_SCHEDULER cloud-tasks, TASKS_QUEUE reservation-expiry. Job aforo-inventory-migrate.",
+        "state": "Oct 9 describe: 100% on aforo-inventory-00005-zkd (Terraform config revision 2026-10-09T00:31Z, digest sha256:0c1061cf..., same code as tag sha-a44ee7e on 00005-ben); service-level minScale unset."
+      },
+      "dependsOn": [
+        {
+          "id": "db-inventory",
+          "how": "Cloud SQL Postgres via Unix socket, pool 2"
+        },
+        {
+          "id": "tq-reservation-expiry",
+          "how": "enqueues one task per reservation (name = reservationId, delay = TTL) signed as aforo-tasks-invoker, which calls back POST /internal/v1/reservations/{id}/expire (services/inventory/src/reservations/expiry-scheduler.ts#L34)"
+        },
+        {
+          "id": "topic-reservation-expired",
+          "how": "publishes ReservationExpired through the outbox; consumed by Orders (orders-reservation-expired)"
+        },
+        {
+          "id": "topic-event-published",
+          "how": "consumes via push subscription inventory-event-published (audience aforo-inventory)"
+        },
+        {
+          "id": "topic-sales-rules-configured",
+          "how": "consumes via push subscription inventory-sales-rules"
+        },
+        {
+          "id": "sched-housekeeping",
+          "how": "Cloud Scheduler POST /internal/v1/housekeeping every minute, audience aforo-inventory"
+        },
+        {
+          "id": "svc-orders",
+          "how": "called by: reserve and confirm (OIDC aforo-inventory)"
+        },
+        {
+          "id": "svc-gateway",
+          "how": "called by: public availability"
+        },
+        {
+          "id": "lib-common",
+          "how": "IdempotencyInterceptor, OutboxModule, consumeOnce inbox, HousekeepingModule (ExpireSweep), PushEnvelope, errors, logging, health, shutdown"
+        }
+      ],
+      "patterns": [
+        "conditional update / seat guard (UPDATE ... available >= :q, services/inventory/src/reservations/reservations.service.ts#L83)",
+        "conditional state transition (expire with expires_at <= now(), reservations.service.ts#L208)",
+        "partial unique index one ACTIVE reservation per buyer",
+        "transactional outbox",
+        "inbox (consumeOnce)",
+        "idempotency key",
+        "local projection",
+        "scheduled expiry via Cloud Tasks + sweep safety net",
+        "DB trigger guarding terminal states",
+        "aggregate concurrency limit (pool)"
+      ],
+      "tactics": [
+        "E-02",
+        "E-03",
+        "E-05",
+        "E-07"
+      ],
+      "observed": "E-02 on dev Oct 9 13:11Z through the gateway: 200 buyers on 10 seats -> 10 created, 190 SOLD_OUT, 0 oversold; inventory p95 808 ms for the burst (target 300 ms missed) and 75 ms metered at 20/s; local p95 169 ms (docs/evidence/e02-concurrency/README.md). Expiry: Cloud Tasks expired the 10 reservations at the TTL, seats 0 -> 10 at 13:20:07 (docs/evidence/reliability-expiry/README.md). Availability 198 -> 196 in the happy path; SOLD_OUT and LIMIT_EXCEEDED decremented nothing (docs/evidence/fails-well/README.md).",
+      "gotchas": [
+        "Burst p95 misses 300 ms with one instance and a 2-connection pool; argument for the waiting room.",
+        "Reserving without the queue works (D-07); E-02 on dev skips the waiting room.",
+        "Re-seed upsert refreshes name/price only, not capacity/available.",
+        "Local EXPIRY_SCHEDULER=local uses setTimeout (dev only).",
+        "README status 'not yet deployed' is stale."
+      ]
+    },
+    {
+      "id": "app-web",
+      "name": "Web",
+      "kind": "web",
+      "layer": "client",
+      "what": "Next.js (App Router) purchase frontend with SSR on / and /events/[id]; seven screens, Spanish UI copy in src/lib/i18n/es.ts. Calls only the Gateway through one API client (src/api/client.ts).",
+      "serves": "Screens: /login, /, /events/:id, /events/:id/queue, /events/:id/buy, /orders/:id/pay, /orders and /orders/:id. Health: GET /health/live, GET /health/ready (checks the Gateway). No internal routes.",
+      "why": [
+        {
+          "ref": "ADR-0007",
+          "note": "Next.js replaces Angular (D-02); SSR only on public routes."
+        },
+        {
+          "ref": "D-02",
+          "note": "Superseded by ADR-0007; frontend deploys as its own container."
+        },
+        {
+          "ref": "D-13",
+          "note": "SSE read with fetch (EventSource cannot send Authorization), polling status every 3 s as fallback (src/lib/sse.ts)."
+        },
+        {
+          "ref": "D-07",
+          "note": "Pass kept in memory/sessionStorage and sent as X-Queue-Pass though nobody verifies it (src/lib/pass.ts OUT-OF-SCOPE(D-07))."
+        },
+        {
+          "ref": "ADR-0004",
+          "note": "Image built once; API_BASE_URL read at runtime per request, no NEXT_PUBLIC_*."
+        },
+        {
+          "ref": "D-20",
+          "note": "The orders list was the first cut candidate; it was built anyway."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/services.tf#L20",
+        "apps/web/README.md"
+      ],
+      "code": "apps/web",
+      "contracts": [
+        "contracts/openapi/gateway.yaml",
+        "contracts/openapi/*.yaml (types generated by npm run gen:api)"
+      ],
+      "gcp": {
+        "type": "Cloud Run service",
+        "name": "aforo-web",
+        "config": "1 vCPU / 512Mi, min 0 / max 2, concurrency 80, timeout 60 s, CPU throttled, container port 4000, ingress all and public (allUsers), SA aforo-web-run@, custom audience aforo-web, env API_BASE_URL and SSR_API_BASE_URL = gateway URL.",
+        "state": "Oct 9 describe: 100% on aforo-web-00005-gkj (created 03:27Z, digest sha256:b7010483..., same digest as tag sha-6e69b9f on 00006-dax); service-level minScale unset."
+      },
+      "dependsOn": [
+        {
+          "id": "svc-gateway",
+          "how": "Browser and SSR call the public Gateway over HTTPS with the session bearer token, X-Queue-Pass, Idempotency-Key"
+        },
+        {
+          "id": "fn-mock-payment-gateway",
+          "how": "Browser is redirected to checkoutUrl under the Gateway's /mock-gateway/** and back"
+        }
+      ],
+      "patterns": [
+        "SSR on public routes",
+        "single API client",
+        "idempotency key per user attempt",
+        "SSE with polling fallback",
+        "errors shown by code with correlationId visible",
+        "polling order detail every 2 s while PENDING_PAYMENT"
+      ],
+      "tactics": [
+        "E-03",
+        "E-05",
+        "E-07"
+      ],
+      "observed": "Driven by Playwright on Oct 9 01:04Z through all 10 acceptance steps; PAID shown 4.7 s after Pay (docs/evidence/happy-path/README.md, screenshots 01-09).",
+      "gotchas": [
+        "Must be opened at https://aforo-web-68220265740.southamerica-east1.run.app (CORS via FRONTEND_ORIGIN).",
+        "Order screens call Catalog per event for names (Order has only ids).",
+        "sessionStorage is per tab: a pass earned in one tab is not seen in another.",
+        "README status 'not yet run against dev' is stale."
+      ]
+    },
+    {
+      "id": "db-catalog",
+      "name": "Catalog database",
+      "kind": "database",
+      "layer": "data",
+      "what": "Logical Postgres database 'catalog' on the shared Cloud SQL instance aforo-pg, with its own user; owned only by svc-catalog.",
+      "serves": "Tables: event (status DRAFT|PUBLISHED, CHECK sales_opens_at < sales_closes_at), sector (PK event_id,id; capacity, price_cents, currency COP), sales_rules (max_tickets_per_person, reservation_ttl_seconds >= 30, opening_window_seconds), idempotency_key, outbox (partial index on unpublished). Trigger event_transition_guard forbids PUBLISHED -> DRAFT. No inbox (consumes nothing).",
+      "why": [
+        {
+          "ref": "D-05",
+          "note": "One Cloud SQL instance, one database and one user per service."
+        },
+        {
+          "ref": "RD-03",
+          "note": "No other service reads it."
+        },
+        {
+          "ref": "D-19",
+          "note": "Migrations via job aforo-catalog-migrate, expand/contract."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/database.tf#L9",
+        "services/catalog/migrations/001_init.sql"
+      ],
+      "code": "services/catalog/migrations",
+      "contracts": [],
+      "gcp": {
+        "type": "Cloud SQL database",
+        "name": "catalog on aforo-pg",
+        "config": "POSTGRES_17, db-f1-micro, connections from catalog pool 2 x 2 instances",
+        "state": "Instance STOPPED (activationPolicy NEVER) on Oct 9; databases not listable while stopped."
+      },
+      "dependsOn": [
+        {
+          "id": "data-cloudsql",
+          "how": "hosted on instance aforo-pg"
+        }
+      ],
+      "patterns": [
+        "database per service",
+        "transactional outbox table",
+        "idempotency table",
+        "DB trigger transition guard",
+        "conditional update"
+      ],
+      "tactics": [
+        "E-07"
+      ],
+      "observed": "",
+      "gotchas": [
+        "Unreachable while the environment is off (make down)."
+      ]
+    },
+    {
+      "id": "db-orders",
+      "name": "Orders database",
+      "kind": "database",
+      "layer": "data",
+      "what": "Logical Postgres database 'orders' on aforo-pg, owned only by svc-orders.",
+      "serves": "Tables: \"order\" (reservation_id UNIQUE, status PENDING_PAYMENT|PAID|EXPIRED|REFUND_PENDING, CHECK total = unit_price x quantity, CHECK paid_at iff PAID), payment (status CREATED|APPROVED|DECLINED|REFUNDED, refund_id iff REFUNDED), idempotency_key, inbox (message_id PK, webhook notificationId and Pub/Sub messageId), outbox. Triggers order_transition and payment_transition allow only the state-machine arrows; transitions are conditional updates.",
+      "why": [
+        {
+          "ref": "D-05",
+          "note": "One database and user per service."
+        },
+        {
+          "ref": "ADR-0005",
+          "note": "Orders pool 3, single instance."
+        },
+        {
+          "ref": "D-19",
+          "note": "Migrations run by job aforo-orders-migrate before the traffic shift (observed Oct 9)."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/database.tf#L9",
+        "services/orders/migrations/001_init.sql"
+      ],
+      "code": "services/orders/migrations",
+      "contracts": [],
+      "gcp": {
+        "type": "Cloud SQL database",
+        "name": "orders on aforo-pg",
+        "config": "POSTGRES_17, db-f1-micro, 3 connections",
+        "state": "Instance STOPPED on Oct 9."
+      },
+      "dependsOn": [
+        {
+          "id": "data-cloudsql",
+          "how": "hosted on instance aforo-pg"
+        }
+      ],
+      "patterns": [
+        "database per service",
+        "transactional outbox table",
+        "inbox table",
+        "idempotency table",
+        "DB trigger transition guard",
+        "conditional update"
+      ],
+      "tactics": [
+        "E-05",
+        "E-06"
+      ],
+      "observed": "Migrate job execution aforo-orders-migrate-9q5s4 completed in 28 s on Oct 9 (docs/evidence/deployment/README.md).",
+      "gotchas": [
+        "Unreachable while the environment is off."
+      ]
+    },
+    {
+      "id": "db-inventory",
+      "name": "Inventory database",
+      "kind": "database",
+      "layer": "data",
+      "what": "Logical Postgres database 'inventory' on aforo-pg, owned only by svc-inventory. Holds the seat guard behind E-02.",
+      "serves": "Tables: event_projection, sector_availability (PK event_id,sector_id; CHECK 0 <= available <= capacity; version), reservation (status ACTIVE|CONFIRMED|EXPIRED|RELEASED, expires_at), buyer_event_total (confirmed per buyer), idempotency_key (response_body json for byte-identical replay), inbox, outbox. Partial unique index reservation_one_active (event_id, buyer_id) WHERE status='ACTIVE'; partial index reservation_overdue for the sweep; trigger reservation_transition_guard refuses leaving terminal states. Seat guard: UPDATE ... SET available = available - q WHERE ... AND available >= q.",
+      "why": [
+        {
+          "ref": "D-05",
+          "note": "One database and user per service."
+        },
+        {
+          "ref": "ADR-0006",
+          "note": "event_id leads every business key and index (future partition key)."
+        },
+        {
+          "ref": "ADR-0003",
+          "note": "expires_at + overdue index support the Cloud Tasks expiry and the one-minute sweep."
+        },
+        {
+          "ref": "ADR-0005",
+          "note": "6 connections total (3 instances x pool 2)."
+        }
+      ],
+      "declaredIn": [
+        "infra/envs/dev/database.tf#L9",
+        "services/inventory/migrations/001_init.sql#L47"
+      ],
+      "code": "services/inventory/migrations",
+      "contracts": [],
+      "gcp": {
+        "type": "Cloud SQL database",
+        "name": "inventory on aforo-pg",
+        "config": "POSTGRES_17, db-f1-micro, up to 6 connections",
+        "state": "Instance STOPPED on Oct 9."
+      },
+      "dependsOn": [
+        {
+          "id": "data-cloudsql",
+          "how": "hosted on instance aforo-pg"
+        }
+      ],
+      "patterns": [
+        "database per service",
+        "conditional update (seat guard)",
+        "partial unique index",
+        "transactional outbox table",
+        "inbox table",
+        "idempotency table",
+        "DB trigger transition guard"
+      ],
+      "tactics": [
+        "E-02"
+      ],
+      "observed": "Guard held 10/10 with 190 SOLD_OUT on dev Oct 9; the test fails if the guard is removed (mutation check) (docs/evidence/e02-concurrency/README.md).",
+      "gotchas": [
+        "Unreachable while the environment is off.",
+        "A sector sold out in a rehearsal stays sold out until its reservations expire (re-seed does not reset it)."
+      ]
+    },
+    {
+      "id": "lib-common",
+      "name": "@aforo/common",
+      "kind": "library",
+      "layer": "platform",
+      "what": "Shared TypeScript library implementing contracts/conventions.md once: core entry (@aforo/common: errors, envelope, logging core, http) with no Nest dependency, and @aforo/common/nest (correlation, auth, idempotency, outbox, inbox, housekeeping, health, shutdown, PushEnvelope).",
+      "serves": "errors + ProblemJsonFilter (all); correlation middleware (all); JSON logging (all); auth @CurrentUser + ServiceAuthClient ID tokens (all); IdempotencyInterceptor with Idempotent-Replayed (catalog, orders, inventory); envelope buildEnvelope/parse with schemas generated from contracts/events (all producers/consumers, functions via core); OutboxPublisher.flush, no poller (catalog, orders, inventory); HousekeepingModule POST /internal/v1/housekeeping (catalog, orders, inventory); inbox consumeOnce (inventory; orders uses its own InboxRepository; queue uses a Redis Lua script); health live/ready (all); http client 0.5 s / 2 s (orders, gateway); ShutdownService (all services).",
+      "why": [
+        {
+          "ref": "D-01",
+          "note": "All services are NestJS on Node 24 so one library serves everyone."
+        },
+        {
+          "ref": "ADR-0002",
+          "note": "Outbox has no poller; flush after commit plus housekeeping."
+        },
+        {
+          "ref": "R-06",
+          "note": "Replay header implemented in the interceptor."
+        },
+        {
+          "ref": "R-07",
+          "note": "422 VALIDATION_ERROR vs 400 for malformed bodies and invalid Pub/Sub envelopes."
+        },
+        {
+          "ref": "D-21",
+          "note": "Functions import only the core entry to keep cold start small (no NestJS)."
+        }
+      ],
+      "declaredIn": [
+        "packages/common/README.md",
+        "packages/common/package.json"
+      ],
+      "code": "packages/common",
+      "contracts": [
+        "contracts/conventions.md",
+        "contracts/events/"
+      ],
+      "gcp": {
+        "type": "none (library bundled into each image)",
+        "name": "",
+        "config": "",
+        "state": ""
+      },
+      "dependsOn": [
+        {
+          "id": "contracts",
+          "how": "event schemas copied by npm run gen:events; a test fails on drift"
+        }
+      ],
+      "patterns": [
+        "transactional outbox",
+        "inbox",
+        "idempotency key",
+        "correlation ID",
+        "problem+json errors",
+        "health checks",
+        "graceful shutdown",
+        "shared kernel library"
+      ],
+      "tactics": [
+        "E-03",
+        "E-05"
+      ],
+      "observed": "",
+      "gotchas": [
+        "Idempotency is a cache, not a lock: two concurrent first calls both run, so business transactions must be duplicate-safe.",
+        "Outbox stops at the first failed row; the rest wait for housekeeping.",
+        "@PushEnvelope answers 400 on invalid messages so they dead-letter (E-05)."
+      ]
+    },
+    {
+      "id": "flow-purchase",
+      "name": "Purchase happy path (acceptance 1-10)",
+      "kind": "flow",
+      "layer": "core",
+      "what": "The ten acceptance steps of docs/plan/acceptance.md, end to end on dev: login -> catalog -> waiting room -> reserve -> mock payment -> PAID -> my orders -> trace by correlationId.",
+      "serves": "1. Login with email -> session: app-web /login -> svc-gateway POST /api/v1/auth/login (HS256 JWT). 2. See three published events, open the one on sale: app-web SSR -> svc-gateway -> svc-catalog GET /api/v1/events, /events/{id} (db-catalog); availability from svc-inventory. 3. Join the queue, see position: app-web -> svc-gateway -> svc-queue POST join + SSE stream (data-memorystore); projection fed earlier by catalog events via Pub/Sub. 4. Admitted, buy enabled, pass countdown: svc-queue admission tick (Redis lock) writes the pass; SSE 'admitted' to app-web. 5. Pick sector and two tickets, confirm: app-web /buy -> svc-gateway POST /api/v1/orders with Idempotency-Key and X-Queue-Pass (logged, not verified). 6. Order PENDING_PAYMENT, availability -2: svc-orders -> svc-inventory POST /internal/v1/reservations (seat guard in db-inventory), Cloud Tasks tq-reservation-expiry task enqueued; order row in db-orders. 7. Pay in the mock and return: app-web -> svc-gateway -> svc-orders POST payment-intents -> fn-mock-payment-gateway (ACL + circuit breaker); browser to /mock-gateway/checkout via svc-gateway, 302 back to app-web. 8. PAID in under 5 s: fn-mock-payment-gateway -> tq-payment-webhooks -> svc-gateway -> svc-orders webhook (HMAC, inbox) -> svc-inventory confirm -> order PAID + OrderPaid via outbox to topic-order-paid; app-web polls every 2 s. 9. Listed in GET /orders: app-web /orders -> svc-gateway -> svc-orders GET /api/v1/orders (names from svc-catalog). 10. Follow the correlationId in logs incl. the bus: svc-gateway generates X-Correlation-Id, every service logs it (lib-common), outbox envelopes and Pub/Sub attributes carry it (obs-logging).",
+      "why": [
+        {
+          "ref": "D-07",
+          "note": "The pass travels but is never verified, so reserving without the queue does not fail (not in the script)."
+        },
+        {
+          "ref": "D-16",
+          "note": "Payment goes to a mock function with a Cloud Tasks delayed webhook."
+        },
+        {
+          "ref": "ADR-0002",
+          "note": "Webhook handled synchronously; outbox flushed after commit."
+        },
+        {
+          "ref": "ADR-0003",
+          "note": "Unpaid reservations expire via Cloud Tasks and the sweep (fails-well check)."
+        }
+      ],
+      "declaredIn": [
+        "docs/plan/acceptance.md",
+        "docs/evidence/happy-path/purchase.cjs",
+        "e2e/README.md"
+      ],
+      "code": "",
+      "contracts": [
+        "contracts/openapi/gateway.yaml",
+        "contracts/openapi/orders.yaml",
+        "contracts/openapi/inventory.yaml",
+        "contracts/openapi/queue.yaml",
+        "contracts/openapi/catalog.yaml",
+        "contracts/openapi/mock-payment-gateway.yaml",
+        "contracts/events/"
+      ],
+      "gcp": {
+        "type": "flow",
+        "name": "",
+        "config": "Needs make up and make redis-up (>= 15 min before).",
+        "state": "dev off on Oct 9."
+      },
+      "dependsOn": [
+        {
+          "id": "app-web",
+          "how": "steps 1-9 UI"
+        },
+        {
+          "id": "svc-gateway",
+          "how": "every step"
+        },
+        {
+          "id": "svc-catalog",
+          "how": "step 2"
+        },
+        {
+          "id": "svc-queue",
+          "how": "steps 3-4"
+        },
+        {
+          "id": "svc-orders",
+          "how": "steps 5-9"
+        },
+        {
+          "id": "svc-inventory",
+          "how": "steps 2, 6, 8"
+        },
+        {
+          "id": "fn-mock-payment-gateway",
+          "how": "steps 7-8"
+        },
+        {
+          "id": "tq-reservation-expiry",
+          "how": "step 6 (expiry task)"
+        },
+        {
+          "id": "tq-payment-webhooks",
+          "how": "step 8"
+        },
+        {
+          "id": "topic-order-paid",
+          "how": "step 8"
+        },
+        {
+          "id": "data-memorystore",
+          "how": "steps 3-4"
+        },
+        {
+          "id": "obs-logging",
+          "how": "step 10"
+        }
+      ],
+      "patterns": [
+        "orchestrated saga",
+        "API gateway",
+        "virtual waiting room",
+        "transactional outbox",
+        "inbox",
+        "idempotency key",
+        "circuit breaker",
+        "correlation ID"
+      ],
+      "tactics": [
+        "E-02",
+        "E-05",
+        "E-06"
+      ],
+      "observed": "Oct 9 01:04Z run with Playwright: all 10 steps passed, position 1, admitted ~2 s, General 198 -> 196, PAID 4.7 s after Pay; earlier 00:39Z run PAID at 6.1 s with bugs #38 and #39 found; one correlationId across gateway, orders, inventory; OrderPaid flushed once (docs/evidence/happy-path/README.md).",
+      "gotchas": [
+        "Each run buys 2 tickets; per-person max is 4, so change the email after two runs.",
+        "If the mock is cancelled the order just stays PENDING_PAYMENT until the reservation expires (8 min TTL in the seed)."
+      ]
+    }
+  ],
+  "decisions": [],
+  "notes": "Doc/code drift: services/queue, services/orders, services/inventory and apps/web READMEs still say 'not yet deployed/run on dev' while docs/evidence shows Oct 8-9 runs. Queue README says AUTH_MODE is not read and that make seed is a TODO; catalog seed now exists (aforo-catalog-seed job). Gateway README header still lists default quota as not implemented (confirmed: RATE_LIMIT_DEFAULT_PER_MIN set in Terraform but unused). Inbox: common README says orders uses consumeOnce, but orders implements its own InboxRepository (services/orders/src/messaging/repositories.ts) with claim in the same transaction; inventory uses consumeOnce. Live traffic revisions are Terraform config revisions created at make down (Oct 9 ~14:15Z for gateway and queue, 00:31Z for catalog/inventory) carrying the same digests as the CI-tagged revisions; status doc commit list matches by digest. Cloud Run 'ingress' is 'all' for every service; privacy comes from IAM invoker bindings plus custom audiences aforo-<name>. E-04 is not referenced anywhere in docs/plan or docs/architecture; E-03 (availability) is health checks only. Ids I referenced that are not in the shared list: sched-housekeeping (the three aforo-<svc>-housekeeping Cloud Scheduler jobs in infra/envs/dev/scheduler.tf)."
+}
