@@ -79,5 +79,4 @@ make poison TOPIC=aforo.catalog.event-published   # ~2 min to the DLQ; the alert
 
 The incident closed by itself after **30 min 58 s** (email "Alert recovered … is missing data",
 [03-recovered.png](03-recovered.png)): a log-based count has no data points when nothing is
-dead-lettered, so the condition never reads "0" and the policy's `auto_close = 1800s` ends it. A
-new dead letter in the meantime would keep the same incident open rather than open a second one.
+dead-lettered, so the condition never reads "0" and the policy's `auto_close = 1800s` ends it.
