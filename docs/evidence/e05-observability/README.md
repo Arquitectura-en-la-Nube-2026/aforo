@@ -21,7 +21,7 @@ times.
 | Retried with backoff, then moved to the DLQ after 5 attempts | ✅ attempts at ~13, ~13, ~17 and ~25 s apart; DLQ at `deliveryAttempt: 5` |
 | `dlq-monitor` logs `event=dead_letter` with the `correlationId` and the DLQ topic | ✅ 3 lines, 13:28:36 → 13:28:46 (1 min 36 s after publishing) |
 | Alert opens an incident ≤ 5 min | ✅ incident open at **13:30:30**: 1 min 54 s after the first dead letter, **3 min 30 s** after publishing ([01-incident.png](01-incident.png); the console shows 08:30:30 UTC-5) |
-| Email to the team | ⏳ to confirm (`02-email.png`) |
+| Email to the team | ✅ "Alert firing … `logging/user/aforo/dead_letters` is above threshold of 0 with a value of 1", start time 1:30 PM UTC, with the policy's runbook text and links to the incident and logs ([02-email.png](02-email.png)) |
 
 ### Timeline (UTC)
 
@@ -35,7 +35,7 @@ times.
 | 13:28:36.429 | `dlq-monitor`: `dead_letter`, `inventory-event-published-dlq`, `deliveryAttempt: 5` (cold start) |
 | 13:28:45.811 | `dlq-monitor`: `dead_letter`, `prewarmer-event-published-dlq` |
 | 13:28:46.105 | `dlq-monitor`: `dead_letter`, `queue-event-published-dlq` |
-| 13:30:30 | Incident **aforo: message dead-lettered** opens (metric `logging/user/aforo/dead_letters`) |
+| 13:30:30 | Incident **aforo: message dead-lettered** opens (metric `logging/user/aforo/dead_letters`); email sent |
 
 A bad message costs five cheap `400`s per consumer and then leaves the subscription.
 

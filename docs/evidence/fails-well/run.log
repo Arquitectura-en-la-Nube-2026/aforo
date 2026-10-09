@@ -1,0 +1,11 @@
+2026-10-09T13:32:11.811Z --- fails well (run=1791552731811, users fw-1791552731811-<who>@aforo.dev) ---
+2026-10-09T13:32:12.513Z availability: Palco 6/6, General 196/200
+2026-10-09T13:32:13.897Z 1a user A orders 4 Palco -> 201 application/json; charset=utf-8 replayed=null {"orderId":"7b77e582-f4ce-4e10-9062-0f34f99e4486","status":"PENDING_PAYMENT","reservationId":"735b4c50-e21c-4eeb-8d7f-cd6e9594e53b","expiresAt":"2026-10-09T13:40:13.549Z","unitPriceCents":90000000,"totalCents":360000000,"currency":"COP"}
+2026-10-09T13:32:14.104Z Palco available after A: 2
+2026-10-09T13:32:14.444Z 1b user B orders 4 Palco (only 2 left) -> 409 application/problem+json; charset=utf-8 replayed=null {"type":"https://aforo.dev/errors/sold-out","title":"Not enough availability","status":409,"code":"SOLD_OUT","detail":"Fewer than 4 seats left in this sector","correlationId":"44f64403-4777-4dd2-bc42-62be0607ce77"}
+2026-10-09T13:32:14.653Z Palco available after B: 2 (expected 2)
+2026-10-09T13:32:15.279Z 2 user C orders 5 General (max 4) -> 409 application/problem+json; charset=utf-8 replayed=null {"type":"https://aforo.dev/errors/limit-exceeded","title":"Ticket limit exceeded","status":409,"code":"LIMIT_EXCEEDED","detail":"At most 4 tickets per person; 0 already confirmed","correlationId":"a70a70b0-aea5-487a-8d27-2ac4aa8f8fb0"}
+2026-10-09T13:32:15.482Z General available: 196 -> 196
+2026-10-09T13:32:16.343Z 3a user D orders 1 General, key 0d777c3c-6eff-45c9-80be-01ffcbd12424 -> 201 application/json; charset=utf-8 replayed=null {"orderId":"b4a02df8-fcc8-4e32-9c02-99ac098b1bad","status":"PENDING_PAYMENT","reservationId":"b04f21e9-0b23-40c0-a159-1a4e74a92f25","expiresAt":"2026-10-09T13:40:16.102Z","unitPriceCents":18000000,"totalCents":18000000,"currency":"COP"}
+2026-10-09T13:32:16.541Z 3b same request, same key -> 201 application/json; charset=utf-8 replayed=true {"status":"PENDING_PAYMENT","orderId":"b4a02df8-fcc8-4e32-9c02-99ac098b1bad","currency":"COP","expiresAt":"2026-10-09T13:40:16.102Z","totalCents":18000000,"reservationId":"b04f21e9-0b23-40c0-a159-1a4e74a92f25","unitPriceCents":18000000}
+2026-10-09T13:32:16.750Z same orderId: true; General available: 196 -> 195 (expected -1)

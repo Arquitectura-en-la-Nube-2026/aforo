@@ -11,10 +11,10 @@ The checklist of what is still to collect is [../status/2026-10-08-missing.md](.
 | [happy-path/](happy-path/) | Acceptance steps 1–10 on `dev` | ✅ Oct 8 |
 | [e02-concurrency/](e02-concurrency/) | E-02 zero overselling | ✅ Oct 9 (`dev`) |
 | [e06-circuit-breaker/](e06-circuit-breaker/) | E-06 payment gateway resilience | ✅ Oct 9 |
-| [e05-observability/](e05-observability/) | E-05 traceability + DLQ alert | ✅ Oct 9 (email to confirm) |
+| [e05-observability/](e05-observability/) | E-05 traceability + DLQ alert | ✅ Oct 9 |
 | `e01-prewarming/` | E-01 pre-warming (FaaS #1) | — |
 | [reliability-expiry/](reliability-expiry/) | Reservation expiry restores seats | ✅ Oct 9 |
-| `fails-well/` | Sold out, limit, idempotent order, duplicate webhook | — |
+| [fails-well/](fails-well/) | Sold out, limit, idempotent order, duplicate webhook | ✅ Oct 9 |
 | `deployment/` | Blue/green and rollback | — |
 | [faas-cold-start/](faas-cold-start/) | Cold start and execution time per function | ⚠️ partial |
 | `e07-cost/` | Cost follows use | — |
