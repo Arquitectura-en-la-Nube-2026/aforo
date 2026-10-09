@@ -44,7 +44,6 @@ The two `queue-*` subscriptions and their DLQs exist **only while Memorystore is
 (`make redis-up`, ADR-0001). Messages published while they don't exist are not kept for the
 queue; `make redis-up` re-runs the catalog seed, which re-emits both facts to rebuild the
 projection.
-(The plan's infra table says "6 topics"; its scope table says 4 — confirm at the freeze.)
 
 **Publishing order is not guaranteed.** Catalog emits `EventPublished` and
 `SalesRulesConfigured` in the same transaction, but consumers may receive them in any order:
@@ -82,8 +81,8 @@ The task name is the deduplication: two attempts to enqueue the same reservation
 
 Tasks are enqueued after the commit, so an enqueue can be lost. For reservations this is covered
 by Inventory's housekeeping sweep, which expires every `ACTIVE` reservation past `expires_at`
-within a minute (ADR-0003). `payment-webhooks` needs no sweep: the mock has no database, it
-enqueues inside the `complete` request and shows an error page if that fails; and
+within a minute (ADR-0003). `payment-webhooks` needs no sweep: the mock enqueues inside the `complete`
+request (its payment record lives in Firestore) and shows an error page if that fails; and
 `/webhook-dispatch` answers non-2xx when Orders fails, so Cloud Tasks retries.
 There is no official emulator: locally, a ~20-line dispatcher with `setTimeout` calls the same
 endpoint behind the same interface (delivered by Inventory by Thu Oct 1).

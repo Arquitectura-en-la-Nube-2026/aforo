@@ -15,7 +15,9 @@ Single source of truth for how units talk to each other. **Code must match these
 | [openapi/components/common.yaml](openapi/components/common.yaml) | Shared schemas, headers, responses |
 | [events/](events/) | Bus topics, envelope and payload JSON Schemas |
 
-**Status: DRAFT — to be frozen on Tue Sept 29 by the contracts owner (Juan José).**
+**Status: in use.** Every unit implements these files and the purchase path ran against them on
+`dev` (Oct 8–9). CI lints them with Redocly (`contracts.yml`); there are no automated contract
+tests against deployed revisions.
 Rules for changing these files: [`.claude/rules/contracts.md`](../.claude/rules/contracts.md).
 
 ## Using them
@@ -28,20 +30,19 @@ make lint-contracts             # Redocly lint of every OpenAPI file
 Frontend and services generate types from these files (e.g. `openapi-typescript`), rather than
 hand-writing them.
 
-## Open points for the freeze
+## Points settled at the freeze
 
-1. Confirm the English names for event types and reservation statuses (see glossary, R-01).
-2. Confirm `sub` = UUID v5(email) (R-02).
-3. Confirm the mock completion route (R-03) and extra error codes (R-04).
-4. The webhook payload field `eventId` (plan) is the **notification id**, not a catalog event.
-   Proposal: rename to `notificationId` before the freeze to avoid confusion. Currently drafted
-   as `notificationId`.
-5. `POST /queue/{eventId}/join` is naturally idempotent per user (re-join returns the same
-   position), so `Idempotency-Key` is optional there.
-6. The FaaS components are the pre-warmer and the DLQ monitor (D-21); confirm the `PAYMENT_UNAVAILABLE` code.
-   New: `prewarmer.yaml` and the `prewarmer-event-published` subscription.
-7. Review the changes from ADR-0002…0005 (all compatible, drafted on Sept 26):
-   `POST /internal/v1/housekeeping` on catalog, inventory and orders; the
-   `Idempotent-Replayed` response header (R-06); `422` vs `400` (R-07); the webhook processed
-   synchronously with a `503` on failure; `expire` conditioned on `expires_at`; consumers
-   answering `400` to invalid envelopes.
+Recorded in [docs/plan/decisions.md](../docs/plan/decisions.md) (R-01…R-07) and built as follows:
+
+1. Event types and statuses use the English names of the glossary (R-01).
+2. `sub` is the UUID v5 of the lower-cased email (R-02).
+3. The mock completes via `GET /mock-gateway/checkout/{paymentId}/complete?outcome=…` (R-03);
+   the extra error codes, `PAYMENT_UNAVAILABLE` included, are in `conventions.md` (R-04).
+4. The webhook field is `notificationId` (the notification id, not a catalog event).
+5. `POST /queue/{eventId}/join` is naturally idempotent per user; `Idempotency-Key` is optional there.
+6. The FaaS components are the pre-warmer and the DLQ monitor (D-21), with `prewarmer.yaml` and
+   the `prewarmer-event-published` subscription.
+7. The ADR-0002…0005 changes are in: `POST /internal/v1/housekeeping` on catalog, inventory and
+   orders; `Idempotent-Replayed` (R-06); `422` for schema errors (R-07); the webhook processed
+   synchronously with `503` on failure; `expire` conditioned on `expires_at`; consumers answering
+   `400` to invalid envelopes.
