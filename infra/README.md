@@ -1,6 +1,6 @@
 # infra — Terraform
 
-> Owner: Julián · Status: in progress (bootstrap done; foundation: Artifact Registry, functions bucket, team access)
+> Owner: Julián · Status: applied on `dev`; every unit deployed and demonstrated Oct 8–9 (`docs/evidence/`)
 
 Everything in GCP is declared here (RT-04). Nothing is created by hand in the console, and no
 `gcloud` command changes a resource Terraform owns. That is also what makes turning the
@@ -12,7 +12,9 @@ Project `aforo-dev-teamf` (`aforo-dev` was taken globally) with billing, six acc
 Cloud SQL, Pub/Sub, Cloud Tasks, Cloud Scheduler, Secret Manager, Artifact Registry,
 IAM Credentials, Cloud Functions, Cloud Build, Eventarc, Memorystore for Redis, Compute Engine
 (VPC), Monitoring), a GCS bucket for Terraform state, and Workload Identity Federation for
-GitHub Actions.
+GitHub Actions with its service account `github-ci`. These bootstrap pieces are the only things
+outside Terraform. `github-ci` holds `roles/owner` on the project so CI can deploy any unit; a
+real environment would narrow it to Cloud Run, Artifact Registry and job-run roles.
 
 ## Layout
 
@@ -23,11 +25,12 @@ infra/
     pubsub-topic/        topic + push subscriptions + DLQ topics + Pub/Sub agent IAM
     cloud-sql/           instance + one database and one user per service
     cloud-function/      one Cloud Run function: placeholder archive, trigger, runtime, SA, ignore_changes
-    cloud-tasks-queue/   queue with retry config
     memorystore/         Redis instance (count = redis_enabled)
-    monitoring/          log-based metrics and alert policies (DLQ alert)
   envs/
-    dev/                 the only environment: main.tf, variables.tf, outputs.tf, backend.tf, terraform.tfvars
+    dev/                 the only environment: one file per area (services, functions, messaging,
+                         tasks, scheduler, database, network, monitoring, secrets) plus main,
+                         variables, outputs, backend and terraform.tfvars. Cloud Tasks queues and
+                         the DLQ alert are declared directly in tasks.tf and monitoring.tf
 ```
 
 ## Resources (dev)
@@ -59,7 +62,7 @@ The only things that change between "off", "on" and "demo". They are Terraform v
 | Variable | Default | `true` / value means | Changed by |
 | -------- | ------- | -------------------- | ---------- |
 | `env_on` | `false` | Cloud SQL `activation_policy = ALWAYS`; Cloud Scheduler jobs not paused | `make up`, `make down` |
-| `redis_enabled` | `false` | Memorystore exists; queue subscriptions + DLQs exist; `queue` gets `REDIS_URL` | `make redis-up`, `make redis-down`, `make down` |
+| `redis_enabled` | `false` | Memorystore exists; queue subscriptions + DLQs exist; `queue` and `gateway` get `REDIS_URL` | `make redis-up`, `make redis-down`, `make down` |
 | `mock_fault_mode` | `none` | `FAULT_MODE` env of `mock-payment-gateway` (`none`/`error`/`timeout`) | `make fault MODE=…`; `make down` resets it |
 
 Never run `terraform apply` by hand: it would reset every switch to its default.
@@ -86,7 +89,7 @@ Never run `terraform apply` by hand: it would reset every switch to its default.
   | `INVENTORY_URL` | orders | `google_cloud_run_v2_service.inventory.uri` |
   | `SELF_URL` | inventory, mock | deterministic Cloud Run URL `https://<name>-<project-number>.<region>.run.app` built from variables (a resource can't reference its own `uri`) |
   | `ORDERS_WEBHOOK_URL` | mock | gateway `uri` + `/api/v1/payments/webhook` |
-  | `REDIS_URL` | queue | `redis://${host}:${port}` of Memorystore, `""` when off |
+  | `REDIS_URL` | queue, gateway | `redis://${host}:${port}` of Memorystore, `""` when off |
 
 ## Cloud SQL
 

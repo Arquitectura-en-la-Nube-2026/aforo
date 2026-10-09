@@ -14,15 +14,13 @@ requirement-by-requirement map is in [delivery-4.md](delivery-4.md).
 | [D-14 (rev.)](#d-14-rev--schedule-moves-to-the-oct-12-deadline) | Schedule moves to the Oct 12 deadline | Accepted |
 | [D-16](#d-16--the-mock-payment-gateway-becomes-a-faas-component) | Mock payment gateway becomes a FaaS component | **Amended by D-21**: stays a function, not counted as a FaaS component |
 | [D-17](#d-17--dlq-monitor-as-the-second-faas-component) | DLQ monitor as the second FaaS component | **Accepted** (by D-21) |
-| [D-18](#d-18--circuit-breaker-and-fault-injection-on-the-payment-path) | Circuit breaker and fault injection on the payment path | **Proposed** |
-| [D-19](#d-19--immutable-artifacts-and-bluegreen-deployment) | Immutable artifacts and blue/green deployment | **Proposed** |
-| [D-20](#d-20--the-inventory-concurrency-test-is-not-cuttable) | The Inventory concurrency test is not cuttable | **Proposed** |
+| [D-18](#d-18--circuit-breaker-and-fault-injection-on-the-payment-path) | Circuit breaker and fault injection on the payment path | **Accepted** (built; [evidence](../evidence/e06-circuit-breaker/)) |
+| [D-19](#d-19--immutable-artifacts-and-bluegreen-deployment) | Immutable artifacts and blue/green deployment | **Accepted** (built; [evidence](../evidence/deployment/)) |
+| [D-20](#d-20--the-inventory-concurrency-test-is-not-cuttable) | The Inventory concurrency test is not cuttable | **Accepted** (built; [evidence](../evidence/e02-concurrency/)) |
 | [D-21](#d-21--faas-components-are-the-pre-warmer-and-the-dlq-monitor) | FaaS components are the pre-warmer (E-01) and the DLQ monitor (E-05) | **Accepted** |
-| [Open](#open--bring-back-queue-pass-verification-d-07) | Bring back queue-pass verification (D-07) | **Open** |
+| [Open](#open--bring-back-queue-pass-verification-d-07) | Bring back queue-pass verification (D-07) | **Closed**: not built; D-07 stands and is justified in the artifact |
 
-"Proposed" decisions are already reflected in the repo (contracts, READMEs, rules) so work can
-start, but need team confirmation before the contract freeze (Tue Sept 29). Once confirmed,
-change the status here and in [decisions.md](decisions.md).
+All of these are implemented and were demonstrated on `dev` on Oct 8–9; see [docs/evidence/](../evidence/README.md).
 
 ---
 
@@ -64,7 +62,7 @@ still unknown; the environment must be turned on for it.
 
 ## D-16 · The mock payment gateway becomes a FaaS component
 
-- **Status:** Proposed · **Supersedes:** D-09 (mock inside Orders)
+- **Status:** Amended by D-21 (stays a function, not counted as a FaaS component) · **Supersedes:** D-09 (mock inside Orders)
 - **Guide requirement:** §2.2 "At least two components must be implemented following
   Functions-as-a-Service principles"; §3.1 Construction "the specific FaaS component and how it
   addresses cold start and execution-time constraints".
@@ -102,7 +100,7 @@ it only through its payment adapter. The browser reaches the checkout page throu
 
 ## D-17 · DLQ monitor as the second FaaS component
 
-- **Status:** Proposed
+- **Status:** Accepted (by D-21)
 - **Guide requirement:** §2.2 two FaaS components; §2.2 "at least one … tactic must be
   demonstrable"; Entrega 3 E-05 "DLQ with messages generates alert ≤ 5 min".
 
@@ -122,7 +120,7 @@ Owner: Platform.
 
 ## D-18 · Circuit breaker and fault injection on the payment path
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Guide requirement:** §2.2 "realize the architectural style(s) and patterns defined in
   Delivery #2 … show where each pattern actually lives"; §2.2 "at least one resilience,
   elasticity, or reliability tactic must be demonstrable against the running system".
@@ -147,7 +145,7 @@ recovery. One new error code in the contract. Small dependency in Orders (`oposs
 
 ## D-19 · Immutable artifacts and blue/green deployment
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Guide requirement:** §2.2 "The build-and-deployment process must produce an immutable
   artifact and apply a deliberate deployment strategy"; §3.1 "how a schema or contract change
   was sequenced against it".
@@ -172,7 +170,7 @@ be shipped (planned for Thu Oct 8) to have evidence for the artifact.
 
 ## D-20 · The Inventory concurrency test is not cuttable
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Guide requirement:** §2.2 demonstrable tactic; §3.3 "the quality attribute tactics" in the
   prototype evaluation.
 
@@ -237,7 +235,8 @@ presented as a test double for the external gateway, not as one of the FaaS comp
 
 ## Open · Bring back queue-pass verification (D-07)
 
-- **Status:** Open — decide at Milestone 2 (Wed Oct 7)
+- **Status:** Closed (Oct 9): verification was not built. D-07 stands; the artifact justifies it
+  with [target-vs-slice.md](../architecture/target-vs-slice.md)
 - **Guide requirement:** §1 and §2.1 "build … exactly as it was designed".
 
 **Context.** D-07 is the largest deviation from the design: without pass verification RD-04 is

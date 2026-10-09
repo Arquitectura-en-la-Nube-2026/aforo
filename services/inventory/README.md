@@ -1,7 +1,8 @@
 # inventory — Inventory & reservations
 
 > Owner: Luis Esteban · Contract: [contracts/openapi/inventory.yaml](../../contracts/openapi/inventory.yaml)
-> Status: implemented (18 tests incl. Postgres and the E-02 concurrency test); not yet deployed
+> Status: deployed on `dev` (18 tests incl. Postgres and the E-02 concurrency test); E-02 and reservation
+> expiry demonstrated Oct 9 ([docs/evidence/](../../docs/evidence/README.md))
 
 Owner of availability. The only service where a race condition turns into lost money, so there
 are **no shortcuts** here. PostgreSQL, database `inventory`. Except for availability, the whole

@@ -23,7 +23,7 @@ file and announce it in the team channel.
 | D-14 | ~~Sept 21 – Oct 2~~ → **Sept 28 – Oct 12** (Delivery 4 deadline), ~10 h per person per week | No load test in this slice |
 | D-15 | ~~Redis runs as a container on Cloud Run~~ — **superseded by [ADR-0001](../adr/0001-memorystore-on-demand.md)**: Cloud Run has no TCP ingress. Memorystore, created only for live tests and demos | |
 
-## Decisions forced by the Delivery 4 guide — **Proposed, confirm as a team**
+## Decisions forced by the Delivery 4 guide — **Accepted, built and demonstrated (Oct 8–9)**
 
 Full context, options and consequences: [delivery-4-decisions.md](delivery-4-decisions.md).
 

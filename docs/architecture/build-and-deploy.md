@@ -1,6 +1,7 @@
 # Build and deployment
 
-> Owner: Platform (Julián). Implements D-19. Status: **design — to be implemented in CI**.
+> Owner: Platform (Julián). Implements D-19. Status: **implemented** in `.github/workflows/_service.yml`; run recorded in
+[docs/evidence/deployment/](../evidence/deployment/).
 
 ## Immutable artifacts
 
@@ -23,7 +24,7 @@ Terraform ignores those fields (`ignore_changes`), so neither tool undoes the ot
 
 ```
 1. gcloud run deploy aforo-<svc> --image <repo>@<digest> --no-traffic --tag sha-<short>
-2. smoke test https://sha-<short>---aforo-<svc>-….run.app  (/health/ready + contract check)
+2. smoke test https://sha-<short>---aforo-<svc>-….run.app  (/health/ready with an ID token)
 3. gcloud run services update-traffic aforo-<svc> --to-latest
 4. rollback: gcloud run services update-traffic aforo-<svc> --to-revisions <previous>=100
 ```
@@ -73,10 +74,14 @@ rejected in review.
 
 Compatible changes stay in `v1` and ship provider first, then consumers. Incompatible changes
 create `/v2` (or event `version: 2`), both served in parallel until every consumer moved.
-Record at least one real example of this sequencing for the Delivery 4 artifact.
+Real example (orders, Oct 9): 3 min 6 s from dispatch to 100 %, rollback in 8.3 s —
+[docs/evidence/deployment/](../evidence/deployment/).
 
 ## Pipeline per unit (GitHub Actions)
 
-`PR`: lint → unit tests → build image → contract tests against Prism.
-`main`: build → push by SHA → migrate job (if any) → deploy `--no-traffic` → smoke → shift traffic.
+`PR` and push to `main`: lint → unit tests → build image (the `check` job). Contracts are linted
+with Redocly in `contracts.yml`; there are no contract tests against Prism or deployed revisions.
+`deploy` (manual `make deploy SERVICE=<unit>`, or on merge only if the repo variable
+`DEPLOY_ON_MERGE=true`, unset today): build → push by SHA → migrate job (if any) → deploy
+`--no-traffic` → smoke → shift traffic.
 Authentication with Workload Identity Federation.

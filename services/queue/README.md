@@ -1,8 +1,8 @@
 # queue — Waiting room & admission
 
 > Owner: Cristian · Contract: [contracts/openapi/queue.yaml](../../contracts/openapi/queue.yaml)
-> Status: implemented and tested against a real Redis; not yet run on GCP or behind the real Gateway
-> in `dev` · Also owns the queue screen in `apps/web`.
+> Status: deployed on `dev` behind the Gateway; every live purchase and the E-01 demo went through it
+> (Oct 8–9, [docs/evidence/](../../docs/evidence/README.md)) · Also owns the queue screen in `apps/web`.
 
 Decides purchase order and admits at a pace. Redis only, no relational DB. The service with the
 most domain logic, so it starts first (Mon Sept 28).
@@ -79,7 +79,7 @@ Consumes `EventPublished` (`queue-event-published`) and `SalesRulesConfigured`
 | Buyer holds a pass and the sale closes | `join` still returns their pass; a new buyer gets 409 | A pass is a promise, closing the sale does not revoke it |
 | Buyer is still waiting when the sale closes | `join` returns their place, and admission keeps serving the queue; a new buyer gets 409 | Same promise as the pass. Before, a page reload answered "not open" to a buyer whom the next tick would admit |
 | Re-join | Keeps the place (`ZADD NX`) | Natural idempotency |
-| `AUTH_MODE` | Reserved, not read | The service trusts `X-User-Id`; Cloud Run IAM decides who can call it. The shared `auth` module does not exist yet |
+| `AUTH_MODE` | Reserved, not read | The service trusts `X-User-Id` set by the Gateway; Cloud Run IAM decides who can call it. It makes no outgoing service calls, so it never needs `@aforo/common`'s ID-token client |
 
 ## How the queue stays correct
 
@@ -119,9 +119,10 @@ curl -X POST localhost:8080/api/v1/queue/8f1b2c3d-0000-4000-8000-000000000001/jo
   and without Redis it is 503 by design. So run `make redis-up` first, then `make deploy SERVICE=queue`.
   A deploy that failed this way cannot be retried at the same commit: tags in Artifact Registry are
   immutable and every build has a new digest, so the push is rejected until there is a new commit.
-- **Seed an event.** `make seed` is still a TODO (Catalog), so the projection starts empty and every `join`
-  answers 404. Until Catalog exists, push one through the script with an ID token of an account allowed to
-  invoke `aforo-queue` (the queue is private):
+- **Seed an event.** `make seed` runs Catalog's seed job, whose `EventPublished` facts reach the queue's
+  push subscription and build the projection (`make redis-up` runs it too). Without it every `join`
+  answers 404. To push a single event by hand instead, use the script with an ID token of an account
+  allowed to invoke `aforo-queue` (the queue is private):
 
 ```bash
 node scripts/seed-event.mjs --url https://aforo-queue-<project-number>.southamerica-east1.run.app \

@@ -11,8 +11,8 @@ Status legend: ✅ covered by the plan · ⚠️ covered with a known deviation 
 
 | Requirement | How we meet it | Evidence | Status |
 | ----------- | -------------- | -------- | :----: |
-| Implement the end-to-end scenario(s) as designed, no new functional scope | Purchase happy path (RF-01–05, RF-08–12, orders half of RF-14) | [acceptance.md](acceptance.md), `e2e/` | ✅ |
-| Demonstrate one complete scenario end-to-end on the deployed system | Acceptance script run live on `dev` + recorded video | `e2e/happy-path.spec.ts`, [../runbooks/demo.md](../runbooks/demo.md) | ✅ |
+| Implement the end-to-end scenario(s) as designed, no new functional scope | Purchase happy path (RF-01–05, RF-08–12, orders half of RF-14) | [acceptance.md](acceptance.md), [../evidence/happy-path/](../evidence/happy-path/) | ✅ |
+| Demonstrate one complete scenario end-to-end on the deployed system | Acceptance script run live on `dev` (Oct 8, Playwright script `docs/evidence/happy-path/purchase.cjs`) + recorded video | [../evidence/happy-path/](../evidence/happy-path/), [../runbooks/demo.md](../runbooks/demo.md) | ✅ (video pending) |
 
 ## 2.2 Non-functional
 
@@ -21,7 +21,7 @@ Status legend: ✅ covered by the plan · ⚠️ covered with a known deviation 
 | Architectural styles from Delivery 2, visible in code and deployment | Microservices (one deployable per bounded context), event-driven (Pub/Sub topics + push subscriptions) | `services/*`, `infra/`, [../../contracts/events/](../../contracts/events/README.md) | ✅ |
 | Patterns from Delivery 2 | API Gateway · Database per Service · Saga (orchestrated) · Transactional Outbox / Inbox · Idempotent consumer · Anti-Corruption Layer · Circuit Breaker | See [pattern map](#pattern-map) | 🆕 Circuit breaker + real ACL (D-16, D-18) |
 | At least one resilience / elasticity / reliability tactic **demonstrable** live | (1) Timeouts + circuit breaker + retry against the mock with fault injection (E-06). (2) 200 concurrent reservations → exactly 10 (E-02). (3) Reservation expiry via Cloud Tasks restores seats (reliability). (4) Scale to zero / autoscaling on Cloud Run (E-07/E-01). (5) Pre-warming before a sales window by `functions/prewarmer` (E-01) | `services/orders` payment adapter, `functions/mock-payment-gateway` (`FAULT_MODE`), `services/inventory/test/concurrency/` | 🆕 |
-| Detailed design honored: contracts = actual API | OpenAPI + JSON Schema in `contracts/`; request validation mirrors them; contract tests in CI against deployed revisions | `contracts/`, DoD | ✅ |
+| Detailed design honored: contracts = actual API | OpenAPI + JSON Schema in `contracts/`, linted in CI (Redocly, `.github/workflows/contracts.yml`); request validation in each service mirrors them; the live runs on `dev` exercised the purchase path's public routes. No automated contract tests against deployed revisions | `contracts/`, DoD, [../evidence/](../evidence/README.md) | ✅ |
 | Schemas match what is deployed | SQL migrations per service are the schema source; they run as a Cloud Run job in the pipeline | `services/*/migrations/`, [build-and-deploy](../architecture/build-and-deploy.md) | 🆕 |
 | Lifecycle entities follow their state machines | Reservation, Order, Payment, Queue entry — transitions implemented as conditional updates and tested | [../architecture/state-machines.md](../architecture/state-machines.md) | 🆕 |
 | Infrastructure as Code, no manual resources | Terraform for everything (Cloud Run, functions, Cloud SQL, Pub/Sub, Cloud Tasks, secrets, IAM, alerts) | `infra/` | ✅ |
@@ -35,7 +35,7 @@ Status legend: ✅ covered by the plan · ⚠️ covered with a known deviation 
 | End-to-end scenario | Acceptance script | ✅ |
 | Architectural style and patterns | Pattern map below | ✅ |
 | Quality attribute tactics | Tactic map below | 🆕 |
-| **Multiple persistence paradigms** | Relational (Cloud SQL PostgreSQL: catalog, orders, inventory) + in-memory key-value with sorted sets (Memorystore for Redis: queue, created per window, ADR-0001) | ✅ |
+| **Multiple persistence paradigms** | Relational (Cloud SQL PostgreSQL: catalog, orders, inventory) + in-memory key-value with sorted sets (Memorystore for Redis: queue and gateway quotas, created per window, ADR-0001) + document store (Firestore: the payment mock's `payments` collection) | ✅ |
 | FaaS component | Two functions realizing designed tactics: `prewarmer`, `dlq-monitor` (D-21) | 🆕 |
 | Containers + IaC | Cloud Run containers from Artifact Registry, Terraform | ✅ |
 
@@ -71,11 +71,12 @@ Status legend: ✅ covered by the plan · ⚠️ covered with a known deviation 
 | Scenario | Tactic in the prototype | Demonstrable? | Dropped (justify in the artifact) |
 | -------- | ----------------------- | :-----------: | --------------------------------- |
 | E-01 Elasticity | Pre-warming per sales window (`functions/prewarmer`), autoscaling, scale to zero, throttling by the waiting room, per-IP quota in the Gateway | **Yes** (min instances rise before an opening and fall after; admission pacing) | Window-sized minimums (2–3), load test |
-| E-02 Zero overselling | Serialized conditional write in the data owner; admission control upstream; aggregate concurrency limit = instance caps × DB pools (ADR-0005) | **Yes** (concurrency test + Terraform config) | Window-sized DB profile (100 connections) |
+| E-02 Zero overselling | Serialized conditional write in the data owner; admission control upstream; aggregate concurrency limit = instance caps × DB pools (ADR-0005) | **Yes**: 0 oversold on `dev`; p95 met only when metered (75 ms), 808 ms for 200 at once ([e02](../evidence/e02-concurrency/)) | Window-sized DB profile (100 connections) |
 | E-03 Availability | Health checks; Cloud Run spreads instances across zones | Health checks only | DB replica / failover |
+| E-04 Isolation between organizers | — | No | Dropped in Delivery 3 itself (single organizer in the slice) |
 | E-05 Observability | Structured logs + correlation ID across HTTP and bus; DLQ alert via `dlq-monitor` | **Yes** (follow a purchase in Cloud Logging; push a poison message) | Distributed tracing, error-rate alert |
 | E-06 Payment gateway resilience | Timeouts, circuit breaker, retry with backoff + jitter, no expiry extension (ADR-03) | **Yes** (`FAULT_MODE=timeout`) | — |
-| E-07 Cost | Scale to zero, `make down`, in-memory store created per window by IaC (Memorystore, `make redis-up`, ADR-0001) | Yes (billing dashboard, `terraform plan`) | Per-window Edge creation |
+| E-07 Cost | Scale to zero, `make down`, in-memory store created per window by IaC (Memorystore, `make redis-up`, ADR-0001) | Partly: switch behavior verified Oct 9; billing screenshots pending ([e07-cost](../evidence/e07-cost/)) | Per-window Edge creation |
 | E-08 Security | Private Cloud Run + IAM invoker, Gateway token check, HMAC webhook, input validation | Partially | WAF, Identity Platform, VPC |
 
 ## Compute model per unit (Lab 5 §2.1 and §4.1)
