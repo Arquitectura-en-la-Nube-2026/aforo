@@ -1,0 +1,10 @@
+before: aforo-orders-00009-guv=100
+14:03:15 rollback: update-traffic --to-revisions aforo-orders-00006-sk7=100
+  0%   aforo-orders-00009-guv
+         sha-1b8ce63: https://sha-1b8ce63---aforo-orders-u3phfgwoza-rj.a.run.app
+14:03:24 done in 8.3 s; serving: aforo-orders-00006-sk7=100
+check: GET /api/v1/orders through the gateway -> 200 1.439224s
+14:03:31 roll forward: update-traffic --to-revisions aforo-orders-00009-guv=100
+  100% aforo-orders-00009-guv
+         sha-1b8ce63: https://sha-1b8ce63---aforo-orders-u3phfgwoza-rj.a.run.app
+14:03:37 done in 5.6 s; serving: aforo-orders-00009-guv=100

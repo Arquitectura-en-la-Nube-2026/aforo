@@ -15,7 +15,7 @@ The checklist of what is still to collect is [../status/2026-10-08-missing.md](.
 | [e01-prewarming/](e01-prewarming/) | E-01 pre-warming (FaaS #1) | ✅ Oct 9 |
 | [reliability-expiry/](reliability-expiry/) | Reservation expiry restores seats | ✅ Oct 9 |
 | [fails-well/](fails-well/) | Sold out, limit, idempotent order, duplicate webhook | ✅ Oct 9 |
-| `deployment/` | Blue/green and rollback | — |
+| [deployment/](deployment/) | Blue/green, migrations and rollback | ✅ Oct 9 |
 | [faas-cold-start/](faas-cold-start/) | Cold start and execution time per function | ✅ Oct 9 |
 | `e07-cost/` | Cost follows use | — |
 
