@@ -10,7 +10,7 @@ The checklist of what is still to collect is [../status/2026-10-08-missing.md](.
 | ------ | -------- | :-------: |
 | [happy-path/](happy-path/) | Acceptance steps 1–10 on `dev` | ✅ Oct 8 |
 | [e02-concurrency/](e02-concurrency/) | E-02 zero overselling | ⚠️ local only |
-| `e06-circuit-breaker/` | E-06 payment gateway resilience | — |
+| [e06-circuit-breaker/](e06-circuit-breaker/) | E-06 payment gateway resilience | ✅ Oct 9 |
 | `e05-observability/` | E-05 traceability + DLQ alert | — |
 | `e01-prewarming/` | E-01 pre-warming (FaaS #1) | — |
 | `reliability-expiry/` | Reservation expiry restores seats | — |

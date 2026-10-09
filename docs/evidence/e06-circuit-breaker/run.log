@@ -1,0 +1,17 @@
+2026-10-09T03:28:49.742Z --- trip (fault expected: timeout) ---
+2026-10-09T03:28:55.126Z setup user=e06-1791516529749@aforo.dev order=8e8539b6-250b-4d49-8333-54649c0b85be (PENDING_PAYMENT)
+2026-10-09T03:29:01.833Z intent #1 -> 503 PAYMENT_UNAVAILABLE latencyMs=6706 correlationId=0e6c16d9-05a7-4c21-bfa3-3d3a9775c2df
+2026-10-09T03:29:06.620Z intent #2 -> 503 PAYMENT_UNAVAILABLE latencyMs=4786 correlationId=5c09a1cf-cdd0-4d4b-b04a-f6d8f3802ddd
+2026-10-09T03:29:06.925Z intent #3 -> 503 PAYMENT_UNAVAILABLE latencyMs=303 correlationId=18eb86b5-cbe4-4c3a-903f-73dce43ab880
+2026-10-09T03:29:07.123Z intent #4 -> 503 PAYMENT_UNAVAILABLE latencyMs=197 correlationId=06192273-b5b0-4aee-901d-c2a6438b09d3
+2026-10-09T03:29:07.325Z intent #5 -> 503 PAYMENT_UNAVAILABLE latencyMs=200 correlationId=e827017f-5a29-4760-ae90-c6394547a339
+2026-10-09T03:29:07.523Z intent #6 -> 503 PAYMENT_UNAVAILABLE latencyMs=198 correlationId=bf18f32a-ee2f-4d96-8151-c25c0692a74d
+2026-10-09T03:32:00.298Z --- recover (fault expected: none) ---
+2026-10-09T03:32:03.081Z intent #1 -> 503 PAYMENT_UNAVAILABLE latencyMs=2777 correlationId=974a1b27-5d09-4358-8f26-9508873eccb5
+2026-10-09T03:32:08.436Z intent #2 -> 503 PAYMENT_UNAVAILABLE latencyMs=353 correlationId=2b9c990f-9d4e-4291-a593-2fe090818e8a
+2026-10-09T03:32:13.985Z intent #3 -> 503 PAYMENT_UNAVAILABLE latencyMs=548 correlationId=5d6649fe-eb31-4a6a-94a1-fd24b9d99693
+2026-10-09T03:32:19.371Z intent #4 -> 503 PAYMENT_UNAVAILABLE latencyMs=383 correlationId=03dd6cf5-515b-47d0-b9a0-b30b72a8d942
+2026-10-09T03:32:24.877Z intent #5 -> 503 PAYMENT_UNAVAILABLE latencyMs=502 correlationId=7ab8de30-4c0b-4a85-bf80-f557067d6389
+2026-10-09T03:32:30.474Z intent #6 -> 503 PAYMENT_UNAVAILABLE latencyMs=594 correlationId=23558098-f2d9-480f-9206-320d0a56b65a
+2026-10-09T03:32:36.411Z intent #7 -> 201  latencyMs=934 correlationId=c177c971-e6c4-4ec2-9897-3f4325a988fc
+2026-10-09T03:32:36.412Z recovered: checkoutUrl=https://aforo-gateway-68220265740.southamerica-east1.run.app/mock-gateway/checkout/df201123-0dea-40ee-ac50-8a8206709623
