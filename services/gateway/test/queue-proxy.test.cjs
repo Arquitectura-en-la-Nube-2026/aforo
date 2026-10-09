@@ -154,7 +154,22 @@ test("a queue service that never answers is cut off after the response timeout",
   const elapsed = Date.now() - startedAt;
   assert.equal(response.statusCode, 500);
   assert.equal(response.json().code, "INTERNAL");
-  assert.ok(elapsed >= 2000 && elapsed < 4000, `answered after ${elapsed} ms`);
+  assert.ok(elapsed >= 7500 && elapsed < 10_000, `answered after ${elapsed} ms`);
+});
+
+test("a cold queue that answers a join after a few seconds still admits the buyer (no 500)", async () => {
+  const buyer = await login(app);
+  upstream.respond = (request, response) => {
+    request.resume();
+    // dev: a cold start answered the join ~3.2 s after it arrived, past the old 2.5 s timeout.
+    setTimeout(() => {
+      response.writeHead(201, { "content-type": "application/json" });
+      response.end(JSON.stringify({ state: "WAITING", position: 1 }));
+    }, 3500);
+  };
+  const response = await inject({ method: "POST", url: `/api/v1/queue/${eventId}/join`, headers: { authorization: `Bearer ${buyer.token}` } });
+  assert.equal(response.statusCode, 201);
+  assert.equal(response.json().position, 1);
 });
 
 test("the stream is passed through as it arrives: the first event is not held back until the upstream ends", async () => {

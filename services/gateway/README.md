@@ -55,7 +55,7 @@ a request at another route of the queue service (`/internal/v1/**` in particular
   Gateway's Google ID token in `Authorization`, for the queue's custom audience `aforo-queue`, taken from the
   instance metadata server and reused for 50 minutes (tokens last one hour; concurrent first calls share
   one fetch). Without it every join is a 403 from Cloud Run. With `AUTH_MODE=dev` (local) no token is sent.
-- **SSE.** The stream is piped without buffering and without a response timeout; the 2.5 s timeout only
+- **SSE.** The stream is piped without buffering and without a response timeout; the 8 s timeout only
   covers waiting for the response headers. When the client leaves, the connection to the queue service is
   closed. On SIGTERM open streams are ended and the shutdown waits for them to finish.
 - **Quota.** `RATE_LIMIT_QUEUE_PER_MIN` (60) requests per client address per minute on these routes, counted
@@ -66,8 +66,10 @@ a request at another route of the queue service (`/internal/v1/**` in particular
 - **Client address.** `request.ip` is the address Cloud Run's front end appended at the end of
   `X-Forwarded-For` (`src/trust-proxy.ts`). It is a function and not `trustProxy: 1` because Fastify 5.12
   treats a number as "trust nothing" while the 5.11 bundled by `@nestjs/platform-fastify` counts hops.
-- **Upstream errors.** A queue service that is down or does not answer within 2.5 s is a 500 `INTERNAL`
-  problem+json. The queue's own answers (200, 201, 404, 409, 500) pass through unchanged. An answer that is
+- **Upstream errors.** A queue service that is down or does not answer within **8 s** is a 500 `INTERNAL`
+  problem+json, logged as `queue.upstream_failed`. Not the usual 2.5 s: the queue scales to zero after
+  ~15 min idle and a cold start took ~3.2 s on dev, so the first join after a pause failed while the queue
+  went on to admit the buyer (the prewarmer only keeps it warm inside sales windows, D-21). The queue's own answers (200, 201, 404, 409, 500) pass through unchanged. An answer that is
   not JSON did not come from the queue (Google's HTML page for a 403 from IAM, for example): it becomes a
   500 `INTERNAL` problem+json, and the log line `queue.unexpected_answer` keeps its real status. A failed
   ID token is the same 500, logged as `queue.identity_token_failed`, and the queue is not called.
