@@ -8,12 +8,21 @@ locals {
 
 # ---- Team access ---------------------------------------------------------------
 
-resource "google_project_iam_member" "team_editor" {
-  for_each = toset(var.team_members)
+# Read-only: teammates can inspect architecture, resources, logs and metrics, but cannot create,
+# change, start or delete anything. Changes go through CI (code) and the project owner (Terraform).
+locals {
+  team_roles = ["roles/viewer", "roles/logging.viewer", "roles/monitoring.viewer"]
+}
+
+resource "google_project_iam_member" "team_readonly" {
+  for_each = {
+    for pair in setproduct(var.team_members, local.team_roles) :
+    "${pair[0]}/${pair[1]}" => { member = pair[0], role = pair[1] }
+  }
 
   project = var.project_id
-  role    = "roles/editor"
-  member  = "user:${each.value}"
+  role    = each.value.role
+  member  = "user:${each.value.member}"
 }
 
 # ---- Artifacts (D-19) ----------------------------------------------------------

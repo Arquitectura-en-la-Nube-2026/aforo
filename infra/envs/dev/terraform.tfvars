@@ -1,6 +1,6 @@
 project_id = "aforo-dev-teamf"
 
-# Teammates' Google accounts (roles/editor). Julián owns the project and is not listed.
+# Teammates' Google accounts (read-only). Julián owns the project and is not listed.
 team_members = [
   "sergioruiz456@gmail.com",
   "cmontanez@unal.edu.co",
