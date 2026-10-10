@@ -10,7 +10,7 @@ variable "region" {
 }
 
 variable "team_members" {
-  description = "Google accounts of the team, granted roles/editor on the project."
+  description = "Google accounts of the team, granted read-only roles (viewer, logging and monitoring viewer) on the project."
   type        = list(string)
   default     = []
 }
