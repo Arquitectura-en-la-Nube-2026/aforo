@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aforo · Consola</title>
+<link rel="icon" href="../../apps/web/src/app/icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Presenter and operator console for the second screen. Follows index.html and can drive it. */
+:root{
+  --navy:#021557; --royal:#0437c4; --azure:#0382fb; --gold:#fdd207; --amber:#faa703;
+  --night:#010b33; --panel:#0a1748; --panel2:#0e1f5e; --line:#22357a; --text:#eef2ff; --muted:#9fb0e8;
+  --good:#5fd39b; --bad:#ff8a80;
+  --display:"Outfit","Avenir Next","Segoe UI",sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--night);color:var(--text);font:16px/1.5 var(--display)}
+code,pre,.mono{font-family:var(--mono);font-variant-ligatures:none}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,summary:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.wrap{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;padding:16px;min-height:100vh}
+@media (max-width:1100px){.wrap{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px 20px;min-width:0}
+.lbl{font:600 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+
+/* clock */
+.clock{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.clock output{font:700 64px/1 var(--display);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.clock .state{font:500 16px var(--mono);color:var(--muted)}
+.clock.late .state{color:var(--bad)}
+.btn{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-weight:600}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:var(--navy)}
+.btn.big{font-size:22px;padding:12px 22px}
+.bar{position:relative;display:flex;margin-top:16px;height:44px;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.bar div{position:relative;display:flex;align-items:center;justify-content:center;font:600 12px var(--mono);color:var(--muted);border-right:1px solid var(--line);background:var(--panel2);white-space:nowrap;overflow:hidden}
+.bar div:last-child{border-right:0}
+.bar div.cur{background:var(--royal);color:#fff}
+.bar .now{position:absolute;top:0;bottom:0;width:3px;background:var(--gold);box-shadow:0 0 10px var(--gold);transition:left 1s linear}
+
+/* current slide */
+.cur-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-top:18px}
+.cur-head h1{margin:4px 0 0;font:800 40px/1.05 var(--display);letter-spacing:-.02em}
+.cur-head .n{font:600 20px var(--mono);color:var(--gold)}
+.builds{display:flex;gap:6px;margin-top:10px}
+.builds i{width:28px;height:8px;border-radius:4px;background:var(--line)}
+.builds i.on{background:var(--gold)}
+.notes{margin-top:16px;font-size:24px;line-height:1.45}
+.notes ul{margin:0;padding-left:24px}
+.notes li{margin-bottom:8px}
+.notes b{color:var(--gold);font-weight:600}
+.notes .say{color:var(--muted);font-size:18px;margin-top:10px}
+.nextup{margin-top:18px;padding-top:14px;border-top:1px dashed var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px}
+.nextup span{font-size:20px}
+.ctrl{display:flex;gap:10px}
+.conn{font:500 13px var(--mono);color:var(--muted)}
+.conn.ok{color:var(--good)}
+
+/* operator */
+.timers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+@media (max-width:700px){.timers{grid-template-columns:minmax(0,1fr)}}
+.timer{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.timer b{display:block;font-size:15px}
+.timer output{font:600 26px var(--mono)}
+.timer ul{margin:6px 0 8px;padding-left:16px;font-size:13px;color:var(--muted)}
+.timer li.done{color:var(--good)}
+.timer li.next{color:var(--text);font-weight:600}
+ol.run{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:8px}
+ol.run li{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--panel2)}
+ol.run li.due{border-color:var(--gold);box-shadow:0 0 0 2px rgba(253,210,7,.25)}
+ol.run li.past{opacity:.5}
+ol.run .t{font:600 14px var(--mono);color:var(--gold);margin-right:8px}
+ol.run p{margin:4px 0;font-size:15px}
+ol.run .note{color:var(--muted);font-size:14px}
+pre.cmd{position:relative;margin:8px 0 2px;padding:9px 70px 9px 12px;background:var(--night);border:1px solid var(--line);border-radius:10px;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
+pre.cmd button{position:absolute;top:6px;right:6px;font:600 12px var(--display);background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:2px 8px}
+
+/* Q&A */
+details.qa{border-top:1px solid var(--line);padding:10px 0}
+details.qa summary{font-weight:600;font-size:17px}
+details.qa p{margin:8px 0 0;color:#d6defc;font-size:16px}
+.keys{color:var(--muted);font-size:13px;margin-top:10px}
+.kbd{font:500 12px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div style="display:grid;gap:16px;align-content:start">
+    <section class="panel">
+      <div class="clock" id="clock">
+        <output id="elapsed">0:00</output>
+        <div>
+          <div class="state" id="state">reloj detenido</div>
+          <div style="display:flex;gap:8px;margin-top:6px"><button class="btn gold" id="clockBtn">Iniciar</button><button class="btn" id="clockReset">Reiniciar</button></div>
+        </div>
+      </div>
+      <div class="bar" id="bar"></div>
+    </section>
+
+    <section class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span class="lbl">En pantalla</span><span class="conn" id="conn">esperando la presentación…</span></div>
+      <div class="cur-head"><div><span class="lbl" id="curSec"></span><h1 id="curTitle">Abra index.html en la otra pantalla</h1></div><span class="n" id="curN"></span></div>
+      <div class="builds" id="builds"></div>
+      <div class="notes" id="notes"></div>
+      <div class="nextup"><span><span class="lbl">Sigue</span>&nbsp; <span id="nextTitle">—</span></span>
+        <div class="ctrl"><button class="btn big" id="prev" aria-label="Anterior">‹</button><button class="btn big gold" id="next" aria-label="Siguiente">›</button></div></div>
+      <p class="keys"><span class="kbd">←</span> <span class="kbd">→</span> mueven la presentación desde aquí · <span class="kbd">T</span> reloj</p>
+    </section>
+
+    <section class="panel">
+      <span class="lbl">Preguntas difíciles · respuestas honestas</span>
+      <div id="qa" style="margin-top:8px"></div>
+    </section>
+  </div>
+
+  <section class="panel" style="align-self:start">
+    <span class="lbl">Operador · demos en vivo</span>
+    <p style="margin:8px 0 0;color:var(--muted);font-size:14px">Antes: <code>make up</code> y <code>make redis-up</code> (≥ 15 min), <code>make status</code> con <code>mock_fault_mode=none</code>, fila calentada con un ingreso. Pestañas: la web, Logs Explorer, Monitoring → Alerting, Cloud Run (gateway, queue), terminal.</p>
+    <div class="timers" id="timers"></div>
+    <ol class="run" id="run"></ol>
+  </section>
+</div>
+
+<script>
+(() => {
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const cmd = (t) => `<pre class="cmd">${esc(t)}<button type="button" data-copy>copiar</button></pre>`;
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-copy]");
+  if (!b) return;
+  try { navigator.clipboard.writeText(b.parentElement.firstChild.textContent).then(() => { b.textContent = "copiado"; setTimeout(() => (b.textContent = "copiar"), 1200); }); } catch (_) {}
+});
+
+/* ───────── sections and clock ───────── */
+const SECTIONS = [["Inicio", 0, 1], ["Funcionalidad", 1, 6], ["C&C", 6, 11], ["Despliegue", 11, 17], ["Nativo de la nube", 17, 19], ["Cierre", 19, 20]];
+const SHORT = { "Nativo de la nube": "Nativo" };
+$("#bar").innerHTML = SECTIONS.map(([n, a, b]) => `<div style="flex:${b - a}" data-sec="${esc(n)}" title="${esc(n)} · ${a}–${b} min">${esc(b - a > 1 ? `${SHORT[n] || n} · ${a}–${b}′` : `${a}′`)}</div>`).join("") + `<span class="now" id="now" style="left:0"></span>`;
+let start = null, acc = 0, deck = null;
+const elapsed = () => acc + (start ? Date.now() - start : 0);
+function toggle() {
+  if (start) { acc += Date.now() - start; start = null; $("#clockBtn").textContent = "Seguir"; }
+  else { start = Date.now(); $("#clockBtn").textContent = "Pausa"; }
+  tick();
+}
+$("#clockBtn").addEventListener("click", toggle);
+$("#clockReset").addEventListener("click", () => { start = null; acc = 0; $("#clockBtn").textContent = "Iniciar"; tick(); });
+function tick() {
+  const ms = elapsed(), min = ms / 60000;
+  $("#elapsed").textContent = fmt(ms);
+  $("#now").style.left = `calc(${Math.min(100, (min / 20) * 100)}% - 1px)`;
+  const sec = deck ? deck.slides[deck.cur].sec : null, s = SECTIONS.find((x) => x[0] === sec);
+  $$("#bar div").forEach((d) => d.classList.toggle("cur", d.dataset.sec === sec));
+  let state = ms ? "" : "reloj detenido";
+  if (s && ms) { const left = s[2] * 60000 - ms; state = left >= 0 ? `${fmt(left)} para cerrar «${s[0]}»` : `«${s[0]}» va ${fmt(-left)} tarde`; $("#clock").classList.toggle("late", left < 0); }
+  else $("#clock").classList.remove("late");
+  if (ms > 20 * 60000) state = `${fmt(ms - 20 * 60000)} sobre los 20 min`;
+  $("#state").textContent = state;
+  $$("ol.run li[data-at]").forEach((li) => {
+    const at = Number(li.dataset.at) * 60000;
+    li.classList.toggle("due", ms > 0 && ms >= at - 30000 && ms < at + 90000);
+    li.classList.toggle("past", ms >= at + 90000);
+  });
+  renderTimers();
+}
+setInterval(tick, 1000);
+
+/* ───────── speaker notes, by slide id ───────── */
+const NOTES = {
+  portada: ["Presentarse: Equipo F, Aforo.", "Una frase: construimos y desplegamos el camino de compra del diseño de las entregas 1 a 3.", "<b>Operador:</b> make poison ya."],
+  problema: ["Tres presiones del dominio, que vienen de los escenarios de calidad de la Entrega 3.", "Picos de 3.000 compradores en 60 s; cero sobreventa; costo en reposo bajo.", "Todo lo que sigue responde a una de estas tres."],
+  corte: ["Construimos el camino de compra completo, no todo el diseño.", "Fuera: emisión, notificaciones, identidad gestionada, Edge/WAF y verificación del pase. Decirlo antes de que lo pregunten."],
+  "sec-a": ["Pasamos a la demo en vivo: cambiar a la pestaña de la web.", "URL: aforo-web-68220265740.southamerica-east1.run.app, correo nuevo."],
+  compra: ["<b>Solo si el vivo falla</b>, o para repasar. Cada clic avanza un paso.", "Paso 4: el pase dura 10 min. Paso 6: la disponibilidad bajó en dos. Paso 8: PAID en menos de 5 s."],
+  traza: ["Mismo correlationId en gateway, orders, inventory.", "El queue_pass_received se registra pero no se verifica (D-07): decirlo.", "Siguiente clic: el pago sale por el outbox como OrderPaid."],
+  "sec-b": ["Ahora la arquitectura: primero componentes y conectores.", "<b>Operador:</b> lanzar E-01 en este momento (e01.cjs)."],
+  "cc-vista": ["Cinco servicios en Cloud Run, cada uno con su almacén.", "Arriba la entrada (Web, Gateway), al centro la lógica, abajo la mensajería y las dos funciones.", "Las bandas de color son los tres paradigmas de persistencia."],
+  "cc-compra": ["La misma compra que acabamos de hacer, salto por salto.", "Énfasis: reserva (transacción en Inventory) y webhook (firma + inbox)."],
+  "cc-estilos": ["Microservicios: un desplegable por capacidad.", "Eventos: síncrono cuando el actor espera, asíncrono cuando el consumidor puede ponerse al día."],
+  "cc-patrones": ["Un patrón por clic; cada uno vive en una caja concreta.", "Si hay poco tiempo: API Gateway, Saga, Outbox, Breaker y saltar."],
+  "cc-propuesto": ["Lo punteado está en el diseño y no en el corte.", "La desviación más grande: el pase no se verifica al reservar."],
+  e02: ["<b>Operador:</b> correr E-02 ahora (200 compradores).", "Exactamente 10 creadas, 190 SOLD_OUT, 0 sobreventa.", "Honestidad: p95 808 ms en ráfaga no cumple; 75 ms dosificado. Por eso existe la sala de espera."],
+  "sec-c": ["Segunda parte de la arquitectura: despliegue e infraestructura."],
+  gcp: ["Cada clic cambia el estado del ambiente.", "make down: la base detenida, Redis no existe, todo en cero.", "make redis-up: Memorystore se crea solo para la ventana (ADR-0001).", "Ventana: el prewarmer sube Gateway y Queue a 1."],
+  datos: ["Tres paradigmas, elegidos por patrón de acceso.", "Firestore es del doble de prueba: decirlo."],
+  iac: ["Terraform: configuración. CI: código y tráfico. prewarmer: los mínimos.", "Así no se pisan entre ellos (ADR-0004)."],
+  pipeline: ["Artefacto inmutable: imagen por commit, despliegue por digest.", "Revisión sin tráfico, smoke test, promoción.", "<b>Operador:</b> rollback en vivo de orders (clic para mostrar 8,3 s)."],
+  faas: ["Las dos funciones realizan tácticas del diseño: precalentar (E-01) y alertar (E-05).", "El mock de pagos también es función, pero es un doble de prueba: no cuenta."],
+  e01: ["<b>Operador:</b> mostrar minScale de aforo-queue = 1 y los logs prewarm_applied.", "Si ya pasó el cierre, mostrar el 1 → 0 en los logs."],
+  e05: ["<b>Operador:</b> logs del correlationId de make poison y el incidente en Monitoring → Alerting.", "Dead letters ≈ 1:36, alerta ≈ 3:30, meta 5 min."],
+  "nativo-si": ["Lo que el sistema en ejecución demuestra.", "No leer todo: elegir 3 (inmutable, IaC, sin estado)."],
+  "nativo-no": ["Lo que falta, sin rodeos.", "Alta disponibilidad: no. Costo: falta la cifra de facturación."],
+  veredicto: ["Leer el veredicto completo.", "Pausa."],
+  gracias: ["Preguntas. Las respuestas están abajo en esta consola.", "<b>Operador:</b> make down al terminar."],
+};
+
+/* ───────── deck sync ───────── */
+const chan = "BroadcastChannel" in window ? new BroadcastChannel("aforo-deck") : null;
+const send = (m) => {
+  m.cid = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  if (chan) chan.postMessage(m);
+  try { localStorage.setItem("aforo-deck-cmd", JSON.stringify(m)); } catch (_) {}
+};
+function onState(s) {
+  if (!s || s.type !== "state") return;
+  deck = s;
+  const m = s.slides[s.cur], nx = s.slides[s.cur + 1];
+  $("#conn").textContent = "presentación conectada"; $("#conn").classList.add("ok");
+  $("#curSec").textContent = m.sec;
+  $("#curTitle").textContent = m.title;
+  $("#curN").textContent = `${String(s.cur + 1).padStart(2, "0")} / ${s.slides.length}`;
+  $("#builds").innerHTML = m.builds ? Array.from({ length: m.builds + 1 }, (_, i) => `<i class="${i <= s.build ? "on" : ""}"></i>`).join("") : "";
+  const notes = NOTES[m.id] || [];
+  $("#notes").innerHTML = notes.length ? `<ul>${notes.map((n) => `<li>${n}</li>`).join("")}</ul>` : "";
+  $("#nextTitle").textContent = m.builds && s.build < m.builds ? `${m.title} (clic ${s.build + 2} de ${m.builds + 1})` : nx ? nx.title : "fin";
+  tick();
+}
+if (chan) chan.onmessage = (e) => onState(e.data);
+addEventListener("storage", (e) => { if (e.key === "aforo-deck-state" && e.newValue) { try { onState(JSON.parse(e.newValue)); } catch (_) {} } });
+try { const last = localStorage.getItem("aforo-deck-state"); if (last) onState(JSON.parse(last)); } catch (_) {}
+send({ type: "hello" });
+$("#next").addEventListener("click", () => send({ type: "next" }));
+$("#prev").addEventListener("click", () => send({ type: "prev" }));
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (["ArrowRight", "PageDown"].includes(e.key)) { e.preventDefault(); send({ type: "next" }); }
+  else if (["ArrowLeft", "PageUp"].includes(e.key)) { e.preventDefault(); send({ type: "prev" }); }
+  else if (e.key === "t" || e.key === "T") toggle();
+});
+
+/* ───────── operator ───────── */
+const TIMERS = [
+  { id: "poison", t: "E-05 · make poison", m: [[96, "dead letters (≈ 1:36)"], [210, "incidente y correo (≈ 3:30)"]] },
+  { id: "e01", t: "E-01 · evento publicado", m: [[5, "mínimo 1 en gateway y queue"], [180, "abre la venta"], [480, "cierre: vuelve a 0"]] },
+  { id: "e02", t: "E-02 · 200 compradores", m: [[480, "vencen las 10 reservas"]] },
+];
+const tStart = {};
+$("#timers").innerHTML = TIMERS.map((x) => `<div class="timer" id="tm-${x.id}"><b>${x.t}</b><output>—</output><ul>${x.m.map(([s, l]) => `<li>${fmt(s * 1000)} · ${l}</li>`).join("")}</ul><button class="btn" data-timer="${x.id}">Marcar inicio</button></div>`).join("");
+$$("[data-timer]").forEach((b) => b.addEventListener("click", () => { tStart[b.dataset.timer] = Date.now(); b.textContent = "Reiniciar"; renderTimers(); }));
+function renderTimers() {
+  TIMERS.forEach((x) => {
+    const box = $("#tm-" + x.id), st = tStart[x.id];
+    if (!st) return;
+    const s = (Date.now() - st) / 1000;
+    $("output", box).textContent = fmt(s * 1000);
+    let marked = false;
+    $$("li", box).forEach((li, i) => { const done = s >= x.m[i][0]; li.classList.toggle("done", done); li.classList.toggle("next", !done && !marked); if (!done) marked = true; });
+  });
+}
+const RUN = [
+  [0, "0:00", "E-05 · enviar el mensaje envenenado; marcar su temporizador y anotar el correlationId.", "make poison TOPIC=aforo.catalog.event-published"],
+  [1, "1:00", "Demo: el presentador compra en la web con un correo nuevo. Al pagar, copiar el id de la orden de la URL."],
+  [5, "5:00", "Paso 10 en Logs Explorer (editor de consultas). Clic en un correlationId → «Show matching entries».", "resource.labels.service_name=(\"aforo-gateway\" OR \"aforo-orders\" OR \"aforo-inventory\")\nhttpRequest.requestUrl=~\"orders|reservations\"\ntimestamp>=\"<un minuto antes de la compra, UTC>\""],
+  [6, "6:00", "E-01 · publicar el evento de demo (abre en 3 min, cierra en 8); marcar su temporizador.", "node docs/evidence/e01-prewarming/e01.cjs", "Así el mínimo está en 1 al llegar a despliegue y baja a 0 cerca del minuto 14."],
+  [10, "≈ 10:00", "E-02 · en la diapositiva «200 compradores»; marcar su temporizador.", "node docs/evidence/e02-concurrency/e02-gateway.cjs 200", "Esperado: answers {\"201\":10,\"409 SOLD_OUT\":190} y oversold=0."],
+  [13, "≈ 13:00", "Blue/green · rollback en vivo de orders y vuelta a la última.", "gcloud run revisions list --service aforo-orders --region southamerica-east1\ngcloud run services update-traffic aforo-orders --region southamerica-east1 --to-revisions <anterior>=100\ngcloud run services update-traffic aforo-orders --region southamerica-east1 --to-latest"],
+  [14.5, "≈ 14:30", "E-01 · mínimo de queue y logs del prewarmer.", "gcloud run services describe aforo-queue --region southamerica-east1 --format='value(metadata.annotations.\"run.googleapis.com/minScale\")'", "Logs: jsonPayload.event=(\"prewarm_scheduled\" OR \"prewarm_applied\")"],
+  [15.5, "≈ 15:30", "E-05 · dead letters y el incidente en Monitoring → Alerting.", "jsonPayload.correlationId=\"<el de make poison>\""],
+  [18, "≈ 18:00", "Si da el tiempo: los cupos de E-02 volvieron a 10 y las órdenes están EXPIRED.", "resource.labels.service_name=\"aforo-inventory\"\nhttpRequest.requestUrl=~\"/expire\""],
+  [21, "Después", "Apagar el ambiente.", "make down"],
+];
+$("#run").innerHTML = RUN.map(([at, t, p, c, n]) => `<li data-at="${at}"><span class="t">${t}</span>${esc(p)}${c ? cmd(c) : ""}${n ? `<p class="note">${esc(n)}</p>` : ""}</li>`).join("")
+  + `<li><span class="t">Si algo falla</span>Mostrar la corrida guardada en <code>docs/evidence/&lt;escenario&gt;/</code>, decirlo y seguir.</li>`;
+
+/* ───────── Q&A ───────── */
+const QA = [
+  ["¿Se puede reservar sin pasar por la fila?", "Sí. El pase se reenvía y se registra, pero nadie lo verifica (D-07); Inventory tampoco revisa la ventana. Hoy la fila la impone la interfaz. En el diseño, Inventory verifica localmente un pase firmado (RD-04). Es la desviación más grande del corte."],
+  ["¿Por qué el p95 de E-02 no cumple?", "Con 200 solicitudes a la vez, el pool de 2 conexiones de Inventory hace cola: 808 ms. Dosificadas a 20/s, como las libera la sala de espera, 75 ms. La integridad no depende de la carga: 0 sobreventa en ambos casos."],
+  ["¿Por qué un mínimo de 1 instancia y no 2–3?", "Tamaño del ambiente dev. El mecanismo está demostrado (0 → 1 → 0 sin intervención); la capacidad para 3.000 llegadas no la medimos."],
+  ["¿Por qué el circuit breaker vive en memoria?", "Evita una llamada a Redis en cada pago. El costo: el estado es por instancia, así que Orders está limitado a 1 instancia en dev para que el disparo sea determinista (ADR-0005)."],
+  ["¿Por qué no Redis en un contenedor de Cloud Run?", "Cloud Run no acepta tráfico TCP crudo (puerto 6379); como sidecar ataría la fila a una instancia. Memorystore 24/7 rompe el presupuesto, así que se crea y se destruye por ventana con Terraform (ADR-0001)."],
+  ["¿Por qué el mock de pagos no cuenta como FaaS?", "Es una función, pero es un doble de prueba de un proveedor externo. Las dos FaaS propias realizan tácticas del diseño: precalentamiento (E-01) y alerta de DLQ (E-05) (D-21)."],
+  ["¿Cómo saben que el API cumple el contrato?", "Contratos OpenAPI y JSON Schema validados en CI con Redocly, y validación de entrada en cada servicio. No hay pruebas de contrato automáticas contra las revisiones desplegadas."],
+  ["¿Cómo secuenciarían un cambio de esquema?", "Expand/contract: la migración corre como job antes de mover tráfico, así que debe ser compatible con la versión anterior; un release posterior retira lo viejo. El mecanismo está en el pipeline; en el corte solo corrió 001_init.sql."],
+  ["¿Qué pasa si el pago se aprueba cuando la reserva ya venció?", "Confirmación y vencimiento compiten por la misma fila ACTIVE; gana quien actualiza primero. Si ganó el vencimiento, la orden pasa a REFUND_PENDING y se reembolsa (E3-ADR-03). Caso borde abierto: si el vencimiento aún no corrió, Inventory confirma aunque expires_at ya pasó."],
+  ["¿Qué no demostraron?", "E-03 (falla de zona: base zonal sin failover) y E-08 (sin Edge ni pruebas de ataque). E-04 se excluyó en la Entrega 3. E-07 sin cifras de facturación."],
+  ["¿Por qué el breaker se reabrió al recuperarse?", "La prueba half-open cayó en el arranque en frío del mock (2,8 s > timeout de 2 s). Lección: los timeouts y las sondas del breaker deben calibrarse contra el cold start de la dependencia."],
+  ["¿Qué permisos tiene CI?", "La cuenta github-ci entra por Workload Identity Federation, sin llaves, pero tiene rol Owner en el proyecto: aceptado para el prototipo, lejos de mínimo privilegio."],
+];
+$("#qa").innerHTML = QA.map(([q, a]) => `<details class="qa"><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join("");
+
+tick();
+})();
+</script>
+</body>
+</html>

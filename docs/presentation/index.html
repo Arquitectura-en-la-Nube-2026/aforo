@@ -1,0 +1,836 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aforo · Entrega 4</title>
+<link rel="icon" href="../../apps/web/src/app/icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Slide deck for the Delivery 4 defense. 1920x1080 canvas scaled to the window.
+   Palette sampled from the Aforo logo: navy-to-royal wordmark, azure ticket, gold-to-amber ring. */
+:root{
+  --navy:#021557; --royal:#0437c4; --azure:#0382fb; --gold:#fdd207; --amber:#faa703;
+  --night:#010b33; --ink:#0b1236; --slate:#4a5372; --paper:#f3f6fc; --mist:#e6edfd; --line:#d8dfee;
+  --cream:#fff4c2; --good:#0c7049; --bad:#b3261e; --warnink:#8a5a00;
+  --display:"Outfit","Avenir Next","Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--night);overflow:hidden}
+body{font-family:var(--display);color:var(--ink);-webkit-font-smoothing:antialiased}
+code,.mono{font-family:var(--mono);font-variant-ligatures:none}
+
+/* stage */
+.stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform-origin:0 0}
+.slide{position:absolute;inset:0;overflow:hidden;display:none;padding:120px 150px 140px;background:var(--paper)}
+.slide.cc,.slide[data-id="gcp"]{padding:96px 120px 120px}
+.slide.active{display:block}
+.slide.dark{background:radial-gradient(1200px 900px at 88% -10%,#0a3fd6 0%,transparent 60%),radial-gradient(900px 700px at -10% 120%,#0437c4 0%,transparent 55%),linear-gradient(160deg,var(--navy),var(--night));color:#fff}
+.progress{position:absolute;left:0;top:0;height:8px;background:linear-gradient(90deg,var(--gold),var(--amber));z-index:5;transition:width .3s}
+.chrome{position:absolute;left:150px;right:150px;bottom:48px;display:flex;justify-content:space-between;align-items:center;font:500 19px var(--mono);color:var(--slate);z-index:4;pointer-events:none}
+.chrome .sec{display:flex;align-items:center;gap:18px}
+.chrome .chip{background:#fff;border-radius:14px;padding:8px 14px;display:flex}
+.chrome .chip img{height:26px}
+.dark-on .chrome{color:#b9c6ff}
+.chrome .num{letter-spacing:.06em}
+.chrome .num b{color:var(--royal)}
+.dark-on .chrome .num b{color:var(--gold)}
+
+/* type */
+.kicker{font:600 21px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--royal);margin:0 0 28px}
+.dark .kicker{color:var(--gold)}
+h1,h2{margin:0;font-weight:800;letter-spacing:-.025em;line-height:.98;text-wrap:balance}
+h1{font-size:110px}
+h2{font-size:66px;line-height:1.04}
+.lede{font-size:30px;line-height:1.4;font-weight:400;color:var(--slate);margin:36px 0 0;max-width:1400px}
+.dark .lede{color:#cdd6ff}
+.gold{color:var(--gold)}
+.royal{color:var(--royal)}
+.pending{opacity:0;transform:translateY(14px)}
+[data-b]{transition:opacity .35s,transform .35s}
+
+/* ring motif */
+.ring{position:absolute;pointer-events:none}
+
+/* title */
+.title-logo{background:#fff;border-radius:36px;padding:34px 48px;display:inline-flex;box-shadow:0 30px 80px rgba(0,0,0,.35)}
+.title-logo img{height:124px}
+.team{position:absolute;left:150px;bottom:140px;font-size:21px;line-height:1.7;color:#b9c6ff;max-width:1000px}
+
+/* big numbers */
+.nums{display:grid;grid-template-columns:repeat(3,1fr);gap:72px;margin-top:110px}
+.num-card{border-top:6px solid var(--gold);padding-top:28px}
+.num-card .n{font-size:118px;font-weight:800;line-height:1;letter-spacing:-.04em;font-variant-numeric:tabular-nums}
+.num-card .l{font:600 19px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin-bottom:20px}
+.num-card p{font-size:27px;line-height:1.4;margin:24px 0 0;color:#dfe5ff}
+
+/* ticket */
+.ticket{--notch:34px;position:relative;background:#fff;border-radius:28px;display:grid;grid-template-columns:auto 1fr;
+  -webkit-mask:radial-gradient(circle var(--notch) at var(--cut) 0,#0000 98%,#000) top/100% 51% no-repeat,radial-gradient(circle var(--notch) at var(--cut) 100%,#0000 98%,#000) bottom/100% 51% no-repeat;
+  mask:radial-gradient(circle var(--notch) at var(--cut) 0,#0000 98%,#000) top/100% 51% no-repeat,radial-gradient(circle var(--notch) at var(--cut) 100%,#0000 98%,#000) bottom/100% 51% no-repeat}
+.divider .ticket{--cut:380px;position:absolute;left:220px;right:220px;top:50%;transform:translateY(-50%);height:460px;color:var(--ink)}
+.divider .stub{width:380px;display:grid;place-items:center;border-right:6px dashed var(--line);background:linear-gradient(160deg,var(--gold),var(--amber));border-radius:28px 0 0 28px}
+.divider .stub span{font-size:240px;font-weight:900;line-height:1;color:var(--navy);letter-spacing:-.05em}
+.divider .body{padding:0 100px;display:flex;flex-direction:column;justify-content:center}
+.divider .body .kicker{color:var(--royal)}
+.divider .body h2{font-size:76px}
+.divider .body p{font-size:28px;color:var(--slate);margin:30px 0 0}
+
+/* path of the purchase */
+.path{display:flex;align-items:center;gap:18px;margin-top:100px;flex-wrap:nowrap}
+.path .stop{background:#fff;border:3px solid var(--royal);border-radius:20px;padding:20px 24px;font-size:28px;font-weight:700;white-space:nowrap}
+.path .stop small{display:block;font:500 17px var(--mono);color:var(--slate);margin-top:6px}
+.path .stop.end{background:linear-gradient(160deg,var(--gold),var(--amber));border-color:var(--amber)}
+.path i{flex:1;height:5px;min-width:24px;background:repeating-linear-gradient(90deg,var(--royal) 0 14px,transparent 14px 24px)}
+.stack{display:flex;flex-wrap:wrap;gap:14px;margin-top:90px}
+.stack span{font:500 21px var(--mono);background:var(--mist);color:var(--navy);border-radius:999px;padding:10px 22px}
+.outscope{margin-top:70px;font-size:24px;color:var(--slate)}
+.outscope b{color:var(--ink);font-weight:600}
+.outscope s{text-decoration:none;border-bottom:3px dashed #b8c2dc;margin-right:26px;white-space:nowrap}
+
+/* purchase screenshots */
+.shotwrap{display:grid;grid-template-columns:1160px 1fr;gap:90px;align-items:center;height:100%}
+.frame{background:#fff;border-radius:24px;box-shadow:0 30px 70px rgba(11,18,54,.18);overflow:hidden;border:1px solid var(--line)}
+.frame .bar{height:44px;background:var(--mist);display:flex;align-items:center;gap:10px;padding:0 18px}
+.frame .bar i{width:14px;height:14px;border-radius:50%;background:#c4cde6}
+.frame .bar span{margin-left:16px;font:500 17px var(--mono);color:var(--slate);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.frame img{display:block;width:100%;height:auto;aspect-ratio:16/10;object-fit:cover;object-position:top}
+.stepinfo .big{font-size:150px;font-weight:900;line-height:.9;color:var(--royal);letter-spacing:-.05em}
+.stepinfo .big small{font-size:46px;color:#b8c2dc;font-weight:700;letter-spacing:0}
+.stepinfo h3{font-size:44px;margin:30px 0 0;line-height:1.05;font-weight:800;letter-spacing:-.02em}
+.stepinfo p{font-size:26px;color:var(--slate);line-height:1.45;margin:22px 0 0}
+.stepinfo .fact{display:inline-block;margin-top:34px;font:600 22px var(--mono);background:var(--cream);color:var(--warnink);padding:10px 18px;border-radius:12px}
+.dots{display:flex;gap:10px;margin-top:48px}
+.dots i{width:34px;height:10px;border-radius:5px;background:var(--line)}
+.dots i.on{background:var(--royal)}
+
+/* trace */
+.trace{margin-top:64px;display:grid;gap:16px}
+.hop{display:grid;grid-template-columns:230px 170px 1fr 100px;align-items:center;gap:28px;background:#fff;border-radius:18px;padding:18px 28px;border-left:8px solid var(--royal);font-size:24px}
+.hop .t{font:500 21px var(--mono);color:var(--slate)}
+.hop .svc{font-weight:700}
+.hop .what{font:500 21px var(--mono);color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hop .st{font:600 23px var(--mono);color:var(--good);text-align:right}
+.hop.async{border-left-color:var(--amber)}
+.cid{display:inline-flex;align-items:center;gap:16px;margin-top:44px;background:var(--navy);color:#fff;border-radius:14px;padding:12px 22px;font:500 22px var(--mono)}
+.cid b{color:var(--gold);font-weight:500}
+
+/* diagrams */
+.diag{position:absolute;left:60px;right:60px;top:215px;bottom:150px;display:flex;align-items:center;justify-content:center}
+.diag svg{width:100%;height:100%}
+.slide.cc{padding-top:80px}
+.slide.cc h2{font-size:64px}
+.caption{position:absolute;left:120px;right:120px;bottom:98px;font-size:32px;line-height:1.3;min-height:44px;display:flex;align-items:flex-end}
+.caption b{color:var(--royal);margin-right:14px;white-space:nowrap}
+.node rect.box{fill:#fff;stroke-width:2.2}
+.node text{fill:var(--ink)}
+.node .nm{font:700 17px var(--display)}
+.node .sb{font:400 13.5px var(--display);fill:var(--slate)}
+.node .bd{font:600 12.5px var(--mono)}
+.node.ghost{display:none}
+.node.ghost rect.box{stroke-dasharray:7 6;fill:var(--paper)}
+.node.ghost text{fill:#8a93b2}
+.proposed .node.ghost,.proposed .edge.ghost{display:inline}
+.edge.ghost{display:none}
+.edge path{fill:none;stroke:#8f9abb;stroke-width:1.8}
+.edge.async path{stroke-dasharray:8 6}
+.edge.deferred path{stroke-dasharray:2.5 5;stroke-width:2.6}
+.edge.sse path{stroke-width:3}
+.edge.ghost path{stroke-dasharray:6 6;opacity:.7}
+.edge text{font:500 12px var(--mono);fill:var(--slate);paint-order:stroke;stroke:var(--paper);stroke-width:5px;stroke-linejoin:round}
+.edge.on path{stroke:var(--amber);stroke-width:4.5;opacity:1}
+.edge.on text{fill:var(--warnink);font-weight:600}
+.node.hl rect.box{stroke:var(--amber);stroke-width:4;fill:var(--cream)}
+.node,.edge{transition:opacity .3s}
+.dim{opacity:.13}
+
+/* deployment map */
+.dep{display:grid;grid-template-columns:1.75fr 1fr 1fr 1fr;gap:26px;margin-top:40px}
+.col h4{margin:0 0 14px;font:600 20px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--slate)}
+.col .tiles{display:grid;gap:10px}
+.col.compute .tiles{grid-template-columns:1fr 1fr}
+.tile{background:#fff;border:2px solid var(--line);border-radius:16px;padding:12px 16px;display:grid;grid-template-columns:18px 1fr;gap:2px 12px;align-items:center;transition:all .3s}
+.tile .dot{width:16px;height:16px;border-radius:50%;border:3px solid var(--good);grid-row:span 2}
+.tile b{font-size:22px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile small{font:500 17px var(--mono);color:var(--slate)}
+.tile[data-s="on"] .dot{background:var(--good)}
+.tile[data-s="on"] small{color:var(--good)}
+.tile[data-s="off"] .dot{background:var(--amber);border-color:var(--amber)}
+.tile[data-s="off"] small{color:var(--warnink)}
+.tile[data-s="absent"]{border-style:dashed;background:transparent;opacity:.5}
+.tile[data-s="absent"] .dot{border-color:var(--bad);border-style:dashed}
+.tile[data-s="absent"] small{color:var(--bad)}
+.tile.warm{border-color:var(--amber);background:var(--cream);box-shadow:0 0 0 5px rgba(250,167,3,.25)}
+.vpc{border:2.5px dashed var(--azure);border-radius:18px;padding:10px;display:grid;gap:8px}
+.vpc>span{font:500 16px var(--mono);color:var(--royal)}
+.modebar{display:flex;gap:14px;margin-top:30px}
+.modebar span{font:600 26px var(--mono);padding:10px 22px;border-radius:14px;background:var(--mist);color:var(--slate)}
+.modebar span.on{background:var(--navy);color:var(--gold)}
+.outband{display:flex;gap:16px;margin-top:22px;align-items:center;font-size:26px;color:var(--slate)}
+.outband .tile{flex:0 0 auto;width:470px}
+
+/* three columns */
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:48px;margin-top:90px}
+.pcard{background:#fff;border-radius:26px;padding:40px 42px 46px;border-top:12px solid var(--royal);box-shadow:0 20px 50px rgba(11,18,54,.08)}
+.pcard .tag{font:600 18px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--royal)}
+.pcard h3{font-size:42px;margin:20px 0 0;font-weight:800;letter-spacing:-.02em;line-height:1.05}
+.pcard p{font-size:24px;color:var(--slate);line-height:1.5;margin:24px 0 0}
+.pcard code{font-size:20px;color:var(--navy);background:var(--mist);padding:2px 8px;border-radius:6px}
+.pcard.amber{border-top-color:var(--amber)} .pcard.amber .tag{color:var(--warnink)}
+.pcard.azure{border-top-color:var(--azure)} .pcard.azure .tag{color:#0262c4}
+.pcard.green{border-top-color:var(--good)} .pcard.green .tag{color:var(--good)}
+
+/* pipeline */
+.pipe{display:grid;grid-template-columns:repeat(6,1fr);gap:0;margin-top:110px;position:relative}
+.pipe .st{position:relative;padding:0 18px}
+.pipe .st::before{content:"";position:absolute;left:0;right:0;top:29px;height:6px;background:var(--royal)}
+.pipe .st:first-child::before{left:50%}.pipe .st:last-child::before{right:50%}
+.pipe .st .c{position:relative;width:64px;height:64px;border-radius:50%;background:var(--royal);color:#fff;display:grid;place-items:center;font-size:28px;font-weight:800;margin:0 auto}
+.pipe .st h4{text-align:center;font-size:27px;margin:30px 0 0;line-height:1.1}
+.pipe .st p{text-align:center;font:500 18px var(--mono);color:var(--slate);margin:10px 0 0}
+.pipe .st .t{display:block;text-align:center;font-size:42px;font-weight:800;color:var(--royal);margin-top:22px}
+.rollback{margin-top:100px;display:flex;align-items:center;gap:48px;background:var(--navy);color:#fff;border-radius:26px;padding:32px 48px}
+.rollback .t{font-size:84px;font-weight:900;color:var(--gold);letter-spacing:-.04em;line-height:1}
+.rollback p{font-size:27px;margin:0;line-height:1.45}
+.rollback code{color:var(--gold);font-size:20px}
+
+/* faas */
+.faas{display:grid;grid-template-columns:1fr 1fr;gap:56px;margin-top:80px}
+.fn{background:#fff;border-radius:30px;overflow:hidden;box-shadow:0 20px 50px rgba(11,18,54,.08)}
+.fn .head{background:linear-gradient(150deg,var(--gold),var(--amber));padding:28px 42px}
+.fn .head .tag{font:600 18px var(--mono);letter-spacing:.12em;color:var(--navy)}
+.fn .head h3{font:800 50px var(--mono);margin:8px 0 0;color:var(--navy);letter-spacing:-.03em}
+.fn .bodyf{padding:32px 42px 40px}
+.fn .flow{font-size:25px;line-height:1.55;margin:0}
+.fn .flow b{color:var(--royal)}
+.fn .stats{display:flex;gap:64px;margin-top:34px}
+.fn .stats div{font:500 18px var(--mono);color:var(--slate)}
+.fn .stats strong{display:block;font:800 46px var(--display);color:var(--ink);letter-spacing:-.03em}
+
+/* live results (dark) */
+.result{display:flex;align-items:baseline;gap:36px;margin-top:80px;flex-wrap:wrap}
+.result .huge{font-size:200px;font-weight:900;line-height:.9;letter-spacing:-.05em}
+.result .arrow{font-size:110px;color:var(--gold);font-weight:300}
+.sub3{display:grid;grid-template-columns:repeat(3,1fr);gap:64px;margin-top:90px}
+.sub3 div{border-top:4px solid rgba(253,210,7,.6);padding-top:20px}
+.sub3 strong{display:block;font-size:56px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.sub3 span{display:block;font-size:23px;color:#cdd6ff;margin-top:16px;line-height:1.45}
+.sub3 .miss strong{color:#ffb3ad}
+.sub3 code{white-space:nowrap;font-size:.9em}
+.score .it{align-content:start}
+.score .v{grid-row:1}
+.score p{grid-column:2}
+.timeline{position:relative;margin-top:170px;height:260px}
+.timeline .axis{position:absolute;left:0;right:0;top:80px;height:8px;border-radius:4px;background:rgba(255,255,255,.15)}
+.timeline .fill{position:absolute;left:0;top:80px;height:8px;border-radius:4px;background:linear-gradient(90deg,var(--gold),var(--amber))}
+.timeline .mark{position:absolute;top:0;transform:translateX(-50%);text-align:center;width:360px}
+.timeline .mark .tm{font-size:50px;font-weight:800;letter-spacing:-.03em;line-height:1}
+.timeline .mark .pin{width:30px;height:30px;border-radius:50%;background:var(--gold);margin:4px auto 0;border:6px solid var(--navy);box-sizing:content-box}
+.timeline .mark p{font-size:23px;color:#cdd6ff;margin:22px 0 0;line-height:1.4}
+.timeline .mark.goal .tm{color:#8fa0e6}
+.timeline .mark.goal .pin{background:var(--navy);border-color:#8fa0e6}
+
+/* verdict */
+.score{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin-top:70px}
+.score .it{background:#fff;border-radius:20px;padding:26px 30px;display:grid;grid-template-columns:auto 1fr;gap:6px 18px;align-items:start}
+.score .v{font:700 16px var(--mono);letter-spacing:.06em;padding:6px 12px;border-radius:10px;grid-row:span 2;margin-top:4px}
+.v.yes{background:#dff3ea;color:var(--good)} .v.part{background:var(--cream);color:var(--warnink)} .v.no{background:#fce9e7;color:var(--bad)}
+.score h4{margin:0;font-size:26px;font-weight:700;line-height:1.15}
+.score p{margin:4px 0 0;font-size:19px;color:var(--slate);line-height:1.45}
+.score.two{grid-template-columns:repeat(2,1fr);gap:32px}
+.score.two .it{padding:32px 36px}
+.score.two h4{font-size:32px}
+.score.two p{font-size:23px}
+.quote{font-size:52px;line-height:1.28;font-weight:600;letter-spacing:-.015em;max-width:1560px;margin-top:40px}
+.quote em{font-style:normal;color:var(--gold)}
+.repo{margin-top:60px;font:500 24px var(--mono);color:#cdd6ff}
+
+/* nav affordance */
+.navbtn{position:fixed;bottom:18px;z-index:10;width:52px;height:52px;border-radius:50%;border:0;background:rgba(255,255,255,.14);color:#fff;font-size:26px;cursor:pointer;opacity:0;transition:opacity .3s}
+.navbtn.prev{right:84px}.navbtn.next{right:20px}
+body.mouse .navbtn{opacity:1}
+.navbtn:focus-visible{opacity:1;outline:3px solid var(--gold)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="rg1" x1="0" x2="1"><stop offset="0" stop-color="#fdd207"/><stop offset="1" stop-color="#faa703"/></linearGradient></defs></svg>
+<div class="stage" id="stage">
+<div class="progress" id="progress"></div>
+
+<!-- ───────────── INICIO ───────────── -->
+<section class="slide dark" data-id="portada" data-sec="Inicio" data-title="Portada">
+  <svg class="ring" width="1300" height="900" style="right:-600px;top:60px" viewBox="0 0 1500 900" aria-hidden="true">
+    <ellipse cx="750" cy="450" rx="680" ry="250" fill="none" stroke="url(#rg1)" stroke-width="40" transform="rotate(-18 750 450)" opacity=".95"/>
+  </svg>
+  <div class="title-logo"><img src="../../apps/web/public/brand/aforo-logo.png" alt="Aforo"></div>
+  <p class="kicker" style="margin-top:70px">Entrega 4 · Construcción y verificación</p>
+  <h1>Vender entradas<br>sin vender <span class="gold">de más</span></h1>
+  <p class="team">Equipo F · Cristian Daniel Montañez Pineda · Juan José Medina Guerrero · David Julián Guzmán Cárdenas · Daniel Felipe Soracipa Torres · Luis Esteban León Rojas · Sergio Alejandro Ruiz Hurtado</p>
+</section>
+
+<section class="slide dark" data-id="problema" data-sec="Inicio" data-title="El problema" data-builds="3">
+  <p class="kicker">El problema</p>
+  <h2>Una venta masiva es un pico, no un promedio</h2>
+  <div class="nums">
+    <div class="num-card" data-b="1"><div class="l">Llegadas · E-01</div><div class="n">3.000</div><p>compradores en los primeros 60 s, tras horas sin tráfico</p></div>
+    <div class="num-card" data-b="2"><div class="l">Integridad · E-02</div><div class="n">0</div><p>localidades vendidas de más, con miles de reservas a la vez</p></div>
+    <div class="num-card" data-b="3"><div class="l">Costo · E-07</div><div class="n">≤ 15<span style="font-size:60px"> USD</span></div><p>al mes en reposo: el costo sigue a las ventas</p></div>
+  </div>
+</section>
+
+<section class="slide" data-id="corte" data-sec="Inicio" data-title="Lo que construimos">
+  <p class="kicker">Lo que construimos</p>
+  <h2>El camino de compra completo, desplegado en Google Cloud</h2>
+  <div class="path">
+    <div class="stop">Login<small>sesión</small></div><i></i>
+    <div class="stop">Catálogo<small>eventos</small></div><i></i>
+    <div class="stop">Sala de espera<small>turno</small></div><i></i>
+    <div class="stop">Reserva<small>cupos</small></div><i></i>
+    <div class="stop">Pago<small>pasarela simulada</small></div><i></i>
+    <div class="stop end">Orden pagada<small style="color:var(--navy)">PAID</small></div>
+  </div>
+  <div class="stack">
+    <span>5 servicios NestJS + web Next.js</span><span>Cloud Run</span><span>2 funciones FaaS</span>
+    <span>Cloud SQL · Memorystore · Firestore</span><span>Pub/Sub · Cloud Tasks</span><span>Terraform</span>
+  </div>
+  <p class="outscope"><b>Fuera del corte:</b>&nbsp; <s>emisión de entradas</s><s>notificaciones</s><s>identidad gestionada</s><s>Edge · WAF</s><s>verificación del pase</s></p>
+</section>
+
+<!-- ───────────── A · FUNCIONALIDAD ───────────── -->
+<section class="slide dark divider" data-id="sec-a" data-sec="Funcionalidad" data-title="a · Funcionalidad">
+  <div class="ticket"><div class="stub"><span>a</span></div>
+    <div class="body"><p class="kicker">Funcionalidad del prototipo</p><h2>Una compra de punta a punta</h2><p>En vivo, sobre el sistema desplegado en <code>dev</code>.</p></div></div>
+</section>
+
+<section class="slide" data-id="compra" data-sec="Funcionalidad" data-title="La compra, paso a paso" data-builds="8">
+  <div class="shotwrap">
+    <div class="frame"><div class="bar"><i></i><i></i><i></i><span id="shotUrl">aforo-web · dev</span></div><img id="shotImg" alt=""></div>
+    <div class="stepinfo">
+      <div class="big"><span id="shotN">1</span><small> / 10</small></div>
+      <h3 id="shotT"></h3>
+      <p id="shotD"></p>
+      <span class="fact" id="shotF"></span>
+      <div class="dots" id="shotDots"></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide" data-id="traza" data-sec="Funcionalidad" data-title="Paso 10 · la compra en los logs" data-builds="1">
+  <p class="kicker">Paso 10 de 10 · trazabilidad</p>
+  <h2>Un mismo <span class="royal">correlationId</span> atraviesa la compra</h2>
+  <div class="cid">correlationId <b id="traceCid"></b></div>
+  <div class="trace" id="trace"></div>
+</section>
+
+<!-- ───────────── B · C&C ───────────── -->
+<section class="slide dark divider" data-id="sec-b" data-sec="C&amp;C" data-title="b · Componentes y conectores">
+  <div class="ticket"><div class="stub"><span>b</span></div>
+    <div class="body"><p class="kicker">Arquitectura del sistema</p><h2>Componentes y conectores</h2><p>Lo que existe en el repositorio y corre en <code>dev</code>.</p></div></div>
+</section>
+
+<section class="slide cc" data-id="cc-vista" data-sec="C&amp;C" data-title="Vista C&amp;C construida">
+  <p class="kicker">Vista de componentes y conectores</p>
+  <h2>Cinco servicios, cada uno dueño de su almacén</h2>
+  <div class="diag" data-cc></div>
+  <div class="caption">Nadie lee la base de otro: los datos cruzan por REST o por eventos.</div>
+</section>
+
+<section class="slide cc" data-id="cc-compra" data-sec="C&amp;C" data-title="La compra sobre la vista" data-builds="7">
+  <p class="kicker">La compra sobre la vista</p>
+  <h2>Por dónde pasa una compra</h2>
+  <div class="diag" data-cc></div>
+  <div class="caption" data-caption></div>
+</section>
+
+<section class="slide cc" data-id="cc-estilos" data-sec="C&amp;C" data-title="Estilos" data-builds="2">
+  <p class="kicker">Estilos arquitectónicos</p>
+  <h2>Microservicios + orientado a eventos</h2>
+  <div class="diag" data-cc></div>
+  <div class="caption" data-caption></div>
+</section>
+
+<section class="slide cc" data-id="cc-patrones" data-sec="C&amp;C" data-title="Dónde vive cada patrón" data-builds="8">
+  <p class="kicker">Patrones · dónde viven</p>
+  <h2 data-title-slot>Dónde vive cada patrón</h2>
+  <div class="diag" data-cc></div>
+  <div class="caption" data-caption></div>
+</section>
+
+<section class="slide cc" data-id="cc-propuesto" data-sec="C&amp;C" data-title="Diseño vs. construido">
+  <p class="kicker">Diseño propuesto vs. construido</p>
+  <h2>Lo punteado quedó fuera del corte</h2>
+  <div class="diag" data-cc data-proposed></div>
+  <div class="caption">Además, el pase de la fila viaja pero nadie lo verifica al reservar (D-07).</div>
+</section>
+
+<section class="slide dark" data-id="e02" data-sec="C&amp;C" data-title="E-02 · cero sobreventa" data-builds="1">
+  <p class="kicker">En vivo · E-02 integridad</p>
+  <h2>200 compradores sobre 10 localidades</h2>
+  <div class="result"><span class="huge">200</span><span class="arrow">→</span><span class="huge gold">10</span></div>
+  <div class="sub3" data-b="1">
+    <div><strong>190</strong><span>rechazos <code>409 SOLD_OUT</code>, sin descontar nada</span></div>
+    <div><strong class="gold">0</strong><span>sobreventa: <code>UPDATE … WHERE available ≥ q</code></span></div>
+    <div class="miss"><strong>808 ms</strong><span>p95 en ráfaga (meta 300 ms). Dosificado a 20/s por la sala: 75 ms</span></div>
+  </div>
+</section>
+
+<!-- ───────────── B · DESPLIEGUE ───────────── -->
+<section class="slide dark divider" data-id="sec-c" data-sec="Despliegue" data-title="b · Despliegue">
+  <div class="ticket"><div class="stub"><span>b</span></div>
+    <div class="body"><p class="kicker">Arquitectura del sistema</p><h2>Despliegue e infraestructura</h2><p>Proyecto <code>aforo-dev-teamf</code> · southamerica-east1 (São Paulo).</p></div></div>
+</section>
+
+<section class="slide" data-id="gcp" data-sec="Despliegue" data-title="Vista de despliegue" data-builds="3">
+  <p class="kicker">Vista de despliegue · todo declarado en Terraform</p>
+  <h2 style="font-size:64px">Los mismos recursos, encendidos solo cuando se usan</h2>
+  <div class="modebar" id="modebar"></div>
+  <div class="dep" id="dep"></div>
+  <div class="outband"><span>Fuera del runtime:</span><span id="outband" style="display:flex;gap:16px"></span></div>
+</section>
+
+<section class="slide" data-id="datos" data-sec="Despliegue" data-title="Tres paradigmas de persistencia">
+  <p class="kicker">Persistencia</p>
+  <h2>Tres paradigmas, cada uno por su patrón de acceso</h2>
+  <div class="three">
+    <div class="pcard"><span class="tag">Relacional</span><h3>Cloud SQL PostgreSQL 17</h3><p>Catalog, Orders e Inventory, una base y un usuario cada uno. El descuento de cupos, la reserva y el outbox en una sola transacción.</p></div>
+    <div class="pcard amber"><span class="tag">Clave-valor en memoria</span><h3>Memorystore Redis 7.2</h3><p>La fila en un <code>ZSET</code>, pases con TTL de 10 min, scripts Lua atómicos y la cuota por IP del Gateway.</p></div>
+    <div class="pcard green"><span class="tag">Documental</span><h3>Firestore</h3><p>Los pagos de la pasarela simulada. Cobro por operación: cuesta casi cero en reposo.</p></div>
+  </div>
+</section>
+
+<section class="slide" data-id="iac" data-sec="Despliegue" data-title="Infraestructura como código">
+  <p class="kicker">Infraestructura como código · ADR-0004</p>
+  <h2>Cada cosa tiene un solo dueño</h2>
+  <div class="three">
+    <div class="pcard"><span class="tag">Terraform</span><h3>La configuración</h3><p>Todo recurso de GCP, en <code>infra/envs/dev</code> con 5 módulos. Nada se creó en la consola.</p></div>
+    <div class="pcard azure"><span class="tag">GitHub Actions</span><h3>El código y el tráfico</h3><p>Imagen por commit, migración, revisión nueva y movimiento de tráfico. Entra por federación de identidad, sin llaves.</p></div>
+    <div class="pcard amber"><span class="tag">prewarmer</span><h3>Los mínimos en ventana</h3><p>Sube y baja las instancias mínimas de Gateway y Queue. Terraform ignora ese valor.</p></div>
+  </div>
+  <div class="stack" style="margin-top:72px"><span>make down</span><span>make up</span><span>make redis-up</span><span>make fault MODE=timeout</span></div>
+</section>
+
+<section class="slide" data-id="pipeline" data-sec="Despliegue" data-title="Blue/green" data-builds="1">
+  <p class="kicker">Artefacto inmutable · despliegue blue/green</p>
+  <h2>De un commit al 100 % del tráfico en 3 min 6 s</h2>
+  <div class="pipe">
+    <div class="st"><div class="c">1</div><h4>Checks</h4><p>lint · pruebas · build</p></div>
+    <div class="st"><div class="c">2</div><h4>Imagen por SHA</h4><p>digest @sha256</p></div>
+    <div class="st"><div class="c">3</div><h4>Migración</h4><p>job con la imagen nueva</p><span class="t">28 s</span></div>
+    <div class="st"><div class="c">4</div><h4>Revisión sin tráfico</h4><p>--no-traffic · tag</p><span class="t">14 s</span></div>
+    <div class="st"><div class="c">5</div><h4>Smoke test</h4><p>/health/ready</p><span class="t">&lt; 1 s</span></div>
+    <div class="st"><div class="c">6</div><h4>Promoción</h4><p>100 % a la nueva</p><span class="t">6 s</span></div>
+  </div>
+  <div class="rollback" data-b="1"><span class="t">8,3 s</span><p>Rollback: mover el tráfico a la revisión anterior.<br><code>gcloud run services update-traffic --to-revisions &lt;anterior&gt;=100</code></p></div>
+</section>
+
+<section class="slide" data-id="faas" data-sec="Despliegue" data-title="Dos funciones FaaS">
+  <p class="kicker">Functions-as-a-Service</p>
+  <h2>Dos funciones, donde el trabajo es raro y corto</h2>
+  <div class="faas">
+    <div class="fn"><div class="head"><span class="tag">FAAS #1 · E-01 ELASTICIDAD</span><h3>prewarmer</h3></div>
+      <div class="bodyf"><p class="flow">Se publica un evento → programa dos tareas → <b>sube</b> Gateway y Queue a 1 instancia antes de abrir y las <b>devuelve a 0</b> al cierre.</p>
+      <div class="stats"><div><strong>543 ms</strong>cold start</div><div><strong>3–6 ms</strong>en caliente</div></div></div></div>
+    <div class="fn"><div class="head"><span class="tag">FAAS #2 · E-05 OBSERVABILIDAD</span><h3>dlq-monitor</h3></div>
+      <div class="bodyf"><p class="flow">Un mensaje agota sus 5 intentos → llega a la DLQ → <b>una línea de log</b> → métrica → <b>alerta</b> y correo.</p>
+      <div class="stats"><div><strong>1 077 ms</strong>cold start</div><div><strong>4–6 ms</strong>en caliente</div></div></div></div>
+  </div>
+  <p class="lede" style="font-size:24px;margin-top:48px">Sin NestJS, un solo archivo con esbuild, sin estado y sin esperas: lo diferido va a Cloud Tasks.</p>
+</section>
+
+<section class="slide dark" data-id="e01" data-sec="Despliegue" data-title="E-01 · precalentamiento" data-builds="1">
+  <p class="kicker">En vivo · E-01 elasticidad</p>
+  <h2>La capacidad llega antes que la multitud</h2>
+  <div class="result"><span class="huge">0</span><span class="arrow">→</span><span class="huge gold">1</span><span class="arrow">→</span><span class="huge">0</span></div>
+  <div class="sub3" data-b="1">
+    <div><strong>3 s</strong><span>después de publicar, Gateway y Queue ya tienen 1 instancia mínima</span></div>
+    <div><strong class="gold">550 ms</strong><span>primer ingreso a la fila al abrir, frente a 4 070 ms en frío</span></div>
+    <div><strong>0</strong><span>instancias al cierre, sin que nadie las toque</span></div>
+  </div>
+</section>
+
+<section class="slide dark" data-id="e05" data-sec="Despliegue" data-title="E-05 · alerta de DLQ">
+  <p class="kicker">En vivo · E-05 observabilidad</p>
+  <h2>Un mensaje envenenado termina en una alerta</h2>
+  <div class="timeline">
+    <div class="axis"></div><div class="fill" style="width:70%"></div>
+    <div class="mark" style="left:0;transform:none;text-align:left;width:auto"><div class="tm">0:00</div><div class="pin" style="margin:4px 0 0"></div><p>make poison</p></div>
+    <div class="mark" style="left:32%"><div class="tm">1:36</div><div class="pin"></div><p>3 consumidores × 5 intentos → DLQ</p></div>
+    <div class="mark" style="left:70%"><div class="tm gold">3:30</div><div class="pin"></div><p>incidente y correo</p></div>
+    <div class="mark goal" style="left:auto;right:0;transform:none;text-align:right;width:auto"><div class="tm">5:00</div><div class="pin" style="margin:4px 0 0 auto"></div><p>meta</p></div>
+  </div>
+</section>
+
+<!-- ───────────── B · VEREDICTO ───────────── -->
+<section class="slide" data-id="nativo-si" data-sec="Nativo de la nube" data-title="Lo que sí">
+  <p class="kicker">¿Es nativo de la nube? · lo que el sistema demuestra</p>
+  <h2>Sí, en cómo se construye y se opera</h2>
+  <div class="score" id="scoreYes"></div>
+</section>
+
+<section class="slide" data-id="nativo-no" data-sec="Nativo de la nube" data-title="Lo que no del todo">
+  <p class="kicker">¿Es nativo de la nube? · lo que falta</p>
+  <h2>En parte, en sus garantías</h2>
+  <div class="score two" id="scorePart"></div>
+</section>
+
+<section class="slide dark" data-id="veredicto" data-sec="Nativo de la nube" data-title="Veredicto">
+  <svg class="ring" width="1400" height="800" style="right:-420px;bottom:-260px" viewBox="0 0 1400 800" aria-hidden="true">
+    <ellipse cx="700" cy="400" rx="640" ry="230" fill="none" stroke="url(#rg1)" stroke-width="30" transform="rotate(-18 700 400)" opacity=".85"/>
+  </svg>
+  <p class="kicker">Veredicto</p>
+  <p class="quote">Aforo es nativo de la nube en cómo <em>se construye, se despliega y se opera</em>. Lo es solo en parte en sus garantías de alta disponibilidad y de borde, que sacrificamos a conciencia para cumplir el presupuesto.</p>
+</section>
+
+<section class="slide dark" data-id="gracias" data-sec="Cierre" data-title="Gracias">
+  <svg class="ring" width="1500" height="900" style="left:-300px;top:180px" viewBox="0 0 1500 900" aria-hidden="true">
+    <ellipse cx="750" cy="450" rx="680" ry="250" fill="none" stroke="url(#rg1)" stroke-width="34" transform="rotate(14 750 450)" opacity=".9"/>
+  </svg>
+  <div style="position:absolute;left:0;right:0;top:280px;text-align:center">
+    <div class="title-logo"><img src="../../apps/web/public/brand/aforo-logo.png" alt="Aforo"></div>
+    <h1 style="margin-top:80px">¿Preguntas?</h1>
+    <p class="repo">github.com/Arquitectura-en-la-Nube-2026/aforo</p>
+  </div>
+</section>
+
+<div class="chrome" id="chrome"><span class="sec"><span class="chip"><img src="../../apps/web/public/brand/aforo-logo.png" alt=""></span><span id="secName"></span></span><span class="num" id="num"></span></div>
+</div>
+
+<button class="navbtn prev" id="prevBtn" aria-label="Anterior">‹</button>
+<button class="navbtn next" id="nextBtn" aria-label="Siguiente">›</button>
+
+<!-- Written by capture/capture.cjs after a live run; the deck falls back to the Oct 8–9 run without it. -->
+<script src="shots/trace.js"></script>
+<script>
+(() => {
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const NS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
+const RUN = window.AFORO_RUN || null;
+
+/* ───────── purchase screenshots ───────── */
+const STEPS = [
+  { f: "01-login.png", u: "/login", t: "Login con correo", d: "Sin contraseña: el Gateway emite la sesión.", x: "JWT HS256 · D-06" },
+  { f: "02-events.png", u: "/", t: "Eventos publicados", d: "Abrimos el que tiene la venta abierta.", x: "SSR desde Catalog" },
+  { f: "03-queue.png", u: "/events/…/queue", t: "Entrar a la fila", d: "La posición llega por SSE.", x: "Redis ZSET" },
+  { f: "04-admitted.png", u: "/events/…/queue", t: "Es tu turno", d: "Admitido; corre el pase de 10 min.", x: "admisión por lotes" },
+  { f: "05-buy.png", u: "/events/…/buy", t: "Sector y cantidad", d: "General × 2.", x: "Idempotency-Key" },
+  { f: "06-pay.png", u: "/orders/…/pay", t: "Orden por pagar", d: "PENDING_PAYMENT; la disponibilidad bajó en dos.", x: "198 → 196" },
+  { f: "07-mock.png", u: "/mock-gateway/checkout/…", t: "Pasarela simulada", d: "Pagamos en el checkout del doble de prueba.", x: "webhook HMAC" },
+  { f: "08-paid.png", u: "/orders/…", t: "Orden pagada", d: "PAID poco después de pagar.", x: "4,7 s · meta < 5 s" },
+  { f: "09-orders.png", u: "/orders", t: "Mis pedidos", d: "La orden aparece como «Pagado».", x: "GET /orders" },
+];
+if (RUN) {
+  if (RUN.paidMs) STEPS[7].x = `${(RUN.paidMs / 1000).toFixed(1).replace(".", ",")} s · meta < 5 s`;
+  if (RUN.availability) STEPS[5].x = `${RUN.availability[0]} → ${RUN.availability[1]}`;
+  if (RUN.admittedMs) STEPS[3].x = `admitido en ${(RUN.admittedMs / 1000).toFixed(1).replace(".", ",")} s`;
+}
+$("#shotDots").innerHTML = "<i></i>".repeat(10);
+STEPS.forEach((s) => { const i = new Image(); i.src = "shots/" + s.f; });
+function showShot(k) {
+  const s = STEPS[k], img = $("#shotImg");
+  img.onerror = () => { img.onerror = null; img.src = "../evidence/happy-path/" + s.f; };
+  img.src = "shots/" + s.f; img.alt = s.t;
+  $("#shotUrl").textContent = "aforo-web · " + s.u;
+  $("#shotN").textContent = k + 1; $("#shotT").textContent = s.t; $("#shotD").textContent = s.d; $("#shotF").textContent = s.x;
+  $$("#shotDots i").forEach((d, j) => d.classList.toggle("on", j <= k));
+}
+
+/* ───────── trace (step 10) ───────── */
+const TRACE = (RUN && RUN.trace) || {
+  cid: "ecd0fae3-dcf8-4ec7-a332-3695a82c852e",
+  hops: [
+    { t: "00:39:18.972", svc: "orders", what: "queue_pass_received (se registra, no se verifica)", st: "" },
+    { t: "00:39:19.791", svc: "inventory", what: "POST /internal/v1/reservations", st: "201" },
+    { t: "00:39:19.813", svc: "orders", what: "POST /api/v1/orders", st: "201" },
+    { t: "00:39:19.818", svc: "gateway", what: "POST /api/v1/orders", st: "201" },
+    { t: "00:39:27.700", svc: "orders", what: "webhook de pago → OrderPaid publicado por el outbox", st: "1", async: true },
+  ],
+};
+$("#traceCid").textContent = TRACE.cid;
+const firstAsync = TRACE.hops.findIndex((h) => h.async);
+$("#trace").innerHTML = TRACE.hops.map((h, i) => `<div class="hop${h.async ? " async" : ""}"${firstAsync >= 0 && i >= firstAsync ? ' data-b="1"' : ""}><span class="t">${esc(h.t)} UTC</span><span class="svc">${esc(h.svc)}</span><span class="what">${esc(h.what)}</span><span class="st">${esc(h.st)}</span></div>`).join("");
+
+/* ───────── C&C diagram ───────── */
+const COLS = [130, 360, 590, 820, 1050], W = 186, R = { r0: 20, r1: 120, r2: 250, r3: 400, r4: 540 };
+const KC = { ext: "var(--ink)", gw: "var(--navy)", web: "var(--navy)", svc: "var(--royal)", double: "var(--slate)", msg: "var(--azure)", fn: "var(--amber)", plat: "var(--slate)", ghost: "#9aa3c0" };
+const BAND = { rel: "var(--royal)", kv: "#b06d00", doc: "var(--good)" };
+const N = [
+  { id: "ghost-edge", k: "ghost", col: 0, row: "r0", nm: "Edge administrado", sb: "CDN · WAF · DDoS" },
+  { id: "browser", k: "ext", col: 2, row: "r0", nm: "Navegador", sb: "comprador" },
+  { id: "ghost-idp", k: "ghost", col: 3, row: "r0", nm: "Identity Platform", sb: "OIDC" },
+  { id: "ghost-captcha", k: "ghost", col: 4, row: "r0", nm: "reCAPTCHA", sb: "al entrar a la fila" },
+  { id: "secrets", k: "plat", col: 0, row: "r1", nm: "Secret Manager", sb: "BD · JWT · HMAC" },
+  { id: "web", k: "web", col: 1, row: "r1", nm: "Web", sb: "Next.js SSR" },
+  { id: "gateway", k: "gw", col: 2, row: "r1", nm: "API Gateway", sb: "sesión · cuota · correlationId" },
+  { id: "catalog", k: "svc", col: 0, row: "r2", nm: "Catalog", sb: "eventos · ventanas", band: ["rel", "PostgreSQL"] },
+  { id: "queue", k: "svc", col: 1, row: "r2", nm: "Queue", sb: "sala de espera · SSE", band: ["kv", "Redis"] },
+  { id: "orders", k: "svc", col: 2, row: "r2", nm: "Orders", sb: "saga · pagos · breaker", band: ["rel", "PostgreSQL"] },
+  { id: "inventory", k: "svc", col: 3, row: "r2", nm: "Inventory", sb: "cupos · reservas", band: ["rel", "PostgreSQL"] },
+  { id: "mock", k: "double", col: 4, row: "r2", nm: "Pasarela simulada", sb: "doble de prueba", band: ["doc", "Firestore"] },
+  { id: "pubsub", k: "msg", x: 40, w: 860, row: "r3", h: 64, nm: "Pub/Sub", sb: "EventPublished · SalesRulesConfigured · ReservationExpired · OrderPaid  —  push · 5 intentos · DLQ" },
+  { id: "tasks", k: "msg", x: 940, w: 220, row: "r3", h: 64, nm: "Cloud Tasks", sb: "vencimientos · webhooks · ventanas" },
+  { id: "scheduler", k: "msg", col: 0, row: "r4", nm: "Cloud Scheduler", sb: "housekeeping c/min" },
+  { id: "prewarmer", k: "fn", col: 1, row: "r4", nm: "prewarmer", sb: "FaaS #1 · E-01" },
+  { id: "dlq", k: "fn", col: 2, row: "r4", nm: "dlq-monitor", sb: "FaaS #2 · E-05" },
+  { id: "logging", k: "plat", col: 3, row: "r4", nm: "Cloud Logging", sb: "logs JSON · alerta" },
+  { id: "ghost-issue", k: "ghost", col: 4, row: "r4", nm: "Emisión · Notificaciones", sb: "consumirían OrderPaid" },
+];
+const E = [
+  { id: "br-web", k: "sync", d: "M497,46 H360 V120", lab: [368, 102, "páginas"] },
+  { id: "br-gw", k: "sync", d: "M590,76 V120", lab: [598, 102, "HTTPS /api/v1"] },
+  { id: "web-gw", k: "sync", d: "M453,148 H497" },
+  { id: "gw-cat", k: "sync", d: "M570,176 V210 H130 V250", lab: [138, 240, "REST"] },
+  { id: "gw-q", k: "sse", d: "M575,176 V210 H360 V250", lab: [368, 240, "REST + SSE"] },
+  { id: "gw-ord", k: "sync", d: "M590,176 V250", lab: [598, 228, "REST"] },
+  { id: "gw-inv", k: "sync", d: "M605,176 V210 H820 V250", lab: [760, 204, "disponibilidad"] },
+  { id: "gw-mock", k: "sync", d: "M612,176 V194 H1080 V250", lab: [960, 188, "checkout"] },
+  { id: "webhook", k: "async", d: "M1143,292 H1174 V148 H683", lab: [900, 142, "webhook firmado HMAC"] },
+  { id: "ord-inv", k: "sync", d: "M683,292 H727" },
+  { id: "ord-mock", k: "sync", d: "M650,250 V232 H1100 V250", lab: [870, 226, "ACL · timeout · breaker"] },
+  { id: "mock-tasks", k: "deferred", d: "M1030,334 V400", lab: [1038, 372, "encola"] },
+  { id: "inv-tasks", k: "deferred", d: "M890,334 V372 H990 V400", both: true, lab: [905, 366, "vencimiento"] },
+  { id: "cat-ps", k: "async", d: "M110,334 V400", lab: [118, 372, "outbox"] },
+  { id: "ps-q", k: "async", d: "M360,400 V334", lab: [368, 372, "push"] },
+  { id: "ord-ps", k: "async", d: "M570,334 V400", lab: [562, 372, "outbox", "end"] },
+  { id: "ps-ord", k: "async", d: "M612,400 V334", lab: [620, 372, "push"] },
+  { id: "inv-ps", k: "async", d: "M800,334 V400", lab: [792, 372, "outbox", "end"] },
+  { id: "ps-inv", k: "async", d: "M842,400 V334", lab: [850, 392, "push"] },
+  { id: "ps-pre", k: "async", d: "M360,464 V540", lab: [368, 526, "push"] },
+  { id: "ps-dlq", k: "async", d: "M590,464 V540", lab: [598, 526, "DLQ"] },
+  { id: "pre-tasks", k: "deferred", d: "M420,540 V500 H1050 V464", both: true, lab: [780, 494, "warm / cool"] },
+  { id: "dlq-log", k: "sync", d: "M683,568 H727" },
+  { id: "sched-cat", k: "sync", d: "M37,568 H20 V292 H37" },
+  { id: "g-edge", k: "ghost", d: "M497,36 H223", lab: [360, 30, "en el diseño todo entra por el Edge", "middle"] },
+  { id: "g-idp", k: "ghost", d: "M683,48 H727" },
+  { id: "g-issue", k: "ghost", d: "M880,464 V520 H1050 V540", lab: [1000, 514, "OrderPaid", "end"] },
+];
+let ccCount = 0;
+function makeCC(host) {
+  const pre = "cc" + ccCount++;
+  const svg = el("svg", { viewBox: "0 0 1200 615", role: "img", "aria-label": "Vista de componentes y conectores" }, host);
+  if (host.hasAttribute("data-proposed")) svg.classList.add("proposed");
+  const defs = el("defs", {}, svg);
+  [["d", "#8f9abb"], ["o", "#faa703"]].forEach(([k, c]) => {
+    const m = el("marker", { id: `${pre}-${k}`, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 6.5, markerHeight: 6.5, orient: "auto-start-reverse" }, defs);
+    el("path", { d: "M0,0 L10,5 L0,10 z", fill: c }, m);
+  });
+  const ge = el("g", {}, svg), gn = el("g", {}, svg), edges = {}, nodes = {};
+  E.forEach((e) => {
+    const g = el("g", { class: `edge ${e.k}` }, ge);
+    const p = el("path", { d: e.d, "marker-end": `url(#${pre}-d)` }, g);
+    if (e.both) p.setAttribute("marker-start", `url(#${pre}-d)`);
+    if (e.lab) el("text", { x: e.lab[0], y: e.lab[1], "text-anchor": e.lab[3] || "start" }, g).textContent = e.lab[2];
+    edges[e.id] = g;
+  });
+  N.forEach((n) => {
+    const h = n.h || (n.row === "r2" ? 84 : 56), x = n.x != null ? n.x : COLS[n.col] - W / 2, y = R[n.row], w = n.w || W;
+    const g = el("g", { class: `node${n.k === "ghost" ? " ghost" : ""}` }, gn);
+    const r = el("rect", { class: "box", x, y, width: w, height: h, rx: 12, stroke: KC[n.k] }, g);
+    if (n.k === "double") r.setAttribute("stroke-dasharray", "5 4");
+    const wide = w > 300, tx = wide ? x + 16 : x + w / 2, an = wide ? "start" : "middle";
+    el("text", { class: "nm", x: tx, y: y + 24, "text-anchor": an }, g).textContent = n.nm;
+    el("text", { class: "sb", x: tx, y: y + 43, "text-anchor": an }, g).textContent = n.sb;
+    if (n.band) {
+      const c = BAND[n.band[0]];
+      el("rect", { x: x + 10, y: y + h - 29, width: w - 20, height: 21, rx: 6, fill: c, "fill-opacity": ".12", stroke: c, "stroke-opacity": ".55" }, g);
+      const t = el("text", { class: "bd", x: x + w / 2, y: y + h - 14, "text-anchor": "middle" }, g); t.textContent = n.band[1]; t.style.fill = c;
+    }
+    nodes[n.id] = g;
+  });
+  return {
+    highlight(ns = [], es = []) {
+      const a = new Set(ns), b = new Set(es), any = a.size + b.size > 0;
+      Object.entries(nodes).forEach(([id, g]) => { g.classList.toggle("dim", any && !a.has(id)); g.classList.toggle("hl", a.has(id)); });
+      Object.entries(edges).forEach(([id, g]) => {
+        const on = b.has(id), p = g.firstChild, m = `url(#${pre}-${on ? "o" : "d"})`;
+        g.classList.toggle("dim", any && !on); g.classList.toggle("on", on);
+        p.setAttribute("marker-end", m); if (p.hasAttribute("marker-start")) p.setAttribute("marker-start", m);
+      });
+    },
+  };
+}
+const diagrams = {};
+$$("[data-cc]").forEach((h) => (diagrams[h.closest(".slide").dataset.id] = makeCC(h)));
+
+const FLOW = [
+  ["Login", ["browser", "gateway"], ["br-gw"], "El Gateway emite la sesión y crea el correlationId que acompaña toda la compra."],
+  ["Catálogo", ["browser", "web", "gateway", "catalog"], ["br-web", "web-gw", "gw-cat"], "Web renderiza en el servidor; solo Catalog decide si la venta está abierta."],
+  ["Sala de espera", ["browser", "gateway", "queue"], ["br-gw", "gw-q"], "Queue ordena en Redis, admite por lotes y envía la posición por SSE."],
+  ["Reserva", ["gateway", "orders", "inventory", "tasks"], ["gw-ord", "ord-inv", "inv-tasks"], "Orders inicia la saga; Inventory descuenta en una transacción y programa el vencimiento."],
+  ["Pago", ["browser", "gateway", "orders", "mock"], ["ord-mock", "gw-mock", "br-gw"], "Orders crea el pago a través de un adaptador con timeout, reintentos y breaker."],
+  ["Webhook", ["mock", "tasks", "gateway", "orders"], ["mock-tasks", "webhook", "gw-ord"], "El webhook firmado llega con reintentos; Orders verifica la firma y deduplica."],
+  ["Orden pagada", ["orders", "inventory", "pubsub"], ["ord-inv", "ord-ps"], "Confirma la reserva, marca PAID y publica OrderPaid por el outbox."],
+  ["Trazabilidad", ["gateway", "orders", "inventory", "catalog", "queue", "logging"], [], "Cada salto escribe el mismo correlationId en Cloud Logging."],
+];
+const STYLES = [
+  ["Microservicios", ["web", "gateway", "catalog", "queue", "orders", "inventory"], ["gw-cat", "gw-q", "gw-ord", "gw-inv", "ord-inv"], "Un desplegable por capacidad, con su propia base, imagen y escalado."],
+  ["Orientado a eventos", ["catalog", "inventory", "orders", "queue", "pubsub", "tasks", "prewarmer", "dlq"], ["cat-ps", "ord-ps", "inv-ps", "ps-q", "ps-ord", "ps-inv", "ps-pre", "ps-dlq", "inv-tasks", "pre-tasks", "mock-tasks"], "El productor publica el hecho sin conocer a sus consumidores."],
+];
+const PATTERNS = [
+  ["API Gateway", ["gateway", "browser"], ["br-gw", "gw-cat", "gw-q", "gw-ord", "gw-inv", "gw-mock"], "Una sola entrada pública; los servicios solo aceptan llamadas con identidad IAM."],
+  ["Base de datos por servicio", ["catalog", "orders", "inventory", "queue"], [], "Tres bases y tres usuarios en Cloud SQL, más Redis para la fila. Sin joins entre bases."],
+  ["Saga orquestada", ["orders", "inventory", "mock"], ["ord-inv", "ord-mock", "webhook"], "Orders ordena reservar → pagar → confirmar, y reembolsa si la reserva venció."],
+  ["Outbox + Inbox", ["catalog", "orders", "inventory", "pubsub", "queue"], ["cat-ps", "ord-ps", "inv-ps", "ps-q", "ps-ord", "ps-inv"], "El hecho se escribe en la misma transacción; el consumidor deduplica por messageId."],
+  ["ACL + Circuit breaker", ["orders", "mock"], ["ord-mock"], "Con el circuito abierto, Orders responde 503 en ≈ 10 ms sin llamar a la pasarela."],
+  ["Nivelación por cola", ["queue", "gateway"], ["gw-q"], "La sala libera compradores por lotes y protege a Inventory de la ráfaga."],
+  ["Entrega diferida + barrido", ["inventory", "tasks", "scheduler"], ["inv-tasks", "sched-cat"], "Cada reserva programa su vencimiento; un barrido por minuto atrapa las que se escapen."],
+  ["DLQ + alerta", ["pubsub", "dlq", "logging"], ["ps-dlq", "dlq-log"], "Tras 5 intentos el mensaje va a la DLQ y dlq-monitor lo convierte en alerta."],
+];
+// Build 0 of cc-compra is its first step; the other two slides start clean at build 0.
+const listBuild = (list, startsAtFirst) => (slide, k) => {
+  const d = diagrams[slide.dataset.id], cap = slide.querySelector("[data-caption]"), ts = slide.querySelector("[data-title-slot]");
+  const i = startsAtFirst ? k : k - 1;
+  if (i < 0) { d.highlight(); cap.innerHTML = ""; if (ts) ts.textContent = "Dónde vive cada patrón"; return; }
+  const [t, ns, es, c] = list[i];
+  d.highlight(ns, es);
+  cap.innerHTML = `<b>${list.length > 2 ? `${i + 1}/${list.length} · ` : ""}${esc(t)}</b>${esc(c)}`;
+  if (ts) ts.textContent = t;
+};
+
+/* ───────── deployment map ───────── */
+const MODES = ["make down", "make up", "make redis-up", "ventana de venta"];
+const S = (s, l) => [s, l];
+const zero = () => S("idle", "escala a cero");
+const warmable = (m) => (m === 3 ? S("on", "mín 1 · precalentado") : S("idle", "escala a cero"));
+const T = {
+  compute: [
+    ["aforo-web", zero], ["aforo-gateway", warmable, true], ["aforo-catalog", zero], ["aforo-queue", warmable, true],
+    ["aforo-orders", zero], ["aforo-inventory", zero], ["prewarmer", zero], ["dlq-monitor", zero],
+    ["pasarela mock", zero], ["jobs (migrate, seed)", () => S("idle", "corren y terminan")],
+  ],
+  data: [
+    ["Cloud SQL aforo-pg", (m) => (m === 0 ? S("off", "detenida") : S("on", "encendida"))],
+    ["Firestore", () => S("on", "cobro por operación")],
+    ["Memorystore Redis", (m) => (m >= 2 ? S("on", "creada") : S("absent", "no existe")), false, true],
+  ],
+  msg: [
+    ["Pub/Sub", (m) => S("on", m >= 2 ? "6 suscripciones" : "4 suscripciones")],
+    ["Cloud Tasks", () => S("on", "3 colas")],
+    ["Cloud Scheduler", (m) => (m === 0 ? S("off", "en pausa") : S("on", "cada minuto"))],
+  ],
+  plat: [
+    ["Secret Manager", () => S("on", "5 secretos")], ["Artifact Registry", () => S("on", "imagen por SHA")],
+    ["IAM", () => S("on", "una cuenta por servicio")], ["Logging + alerta", () => S("on", "métrica de DLQ")],
+  ],
+};
+const tile = (name, i, grp) => `<div class="tile" data-t="${grp}${i}"><span class="dot"></span><b>${esc(name)}</b><small></small></div>`;
+$("#dep").innerHTML = [["compute", "Cómputo · Cloud Run"], ["data", "Datos"], ["msg", "Mensajería"], ["plat", "Plataforma"]].map(([g, l]) => {
+  const items = T[g].map((t, i) => (t[3] ? `<div class="vpc"><span>aforo-vpc · 10.10.0.0/24</span>${tile(t[0], i, g)}</div>` : tile(t[0], i, g))).join("");
+  return `<div class="col ${g}"><h4>${l}</h4><div class="tiles">${items}</div></div>`;
+}).join("");
+$("#outband").innerHTML = `<div class="tile" data-s="on"><span class="dot"></span><b>Terraform</b><small>estado en GCS</small></div><div class="tile" data-s="on"><span class="dot"></span><b>GitHub Actions</b><small>federación de identidad</small></div>`;
+$("#modebar").innerHTML = MODES.map((m) => `<span>${m}</span>`).join("");
+function depMode(m) {
+  $$("#modebar span").forEach((s, i) => s.classList.toggle("on", i === m));
+  Object.entries(T).forEach(([g, list]) => list.forEach((t, i) => {
+    const node = $(`[data-t="${g}${i}"]`), [s, l] = t[1](m);
+    node.dataset.s = s; $("small", node).textContent = l; node.classList.toggle("warm", m === 3 && !!t[2]);
+  }));
+}
+
+/* ───────── verdict ───────── */
+const YES = [
+  ["Artefactos inmutables", "Imagen por commit, despliegue por digest."],
+  ["Despliegue deliberado", "Blue/green por revisiones; rollback en 8,3 s."],
+  ["Infraestructura como código", "Todo en Terraform; encender y apagar con make."],
+  ["Sin estado, desechable", "El estado vive en servicios administrados."],
+  ["Trabajo dentro de la solicitud", "Sin pollers: outbox, Scheduler y Cloud Tasks."],
+  ["FaaS donde encaja", "prewarmer y dlq-monitor: eventos raros y cortos."],
+  ["Servicios administrados", "Cloud Run, Cloud SQL, Memorystore, Pub/Sub, Tasks."],
+  ["Asincronía tolerante a fallas", "Webhook entregado 5 veces → un solo PAID."],
+  ["Resiliencia ante dependencias", "Circuito abierto: 503 en ≈ 10 ms."],
+];
+const PART = [
+  ["part", "Elasticidad", "Escala a cero y precalentamiento demostrados; sin prueba de 3.000 llegadas y con mínimo 1, no 2–3."],
+  ["part", "Observabilidad", "Logs JSON con correlationId y alerta de DLQ; sin tracing distribuido ni alerta de tasa de error."],
+  ["part", "Costo que sigue al uso", "make down detiene la base y destruye Redis; falta la cifra de facturación."],
+  ["part", "Seguridad", "IAM entre servicios y webhook firmado; sin Edge, WAF ni identidad gestionada."],
+  ["no", "Alta disponibilidad", "Cloud SQL zonal y Redis sin réplica: no hay failover ante la pérdida de una zona."],
+];
+$("#scoreYes").innerHTML = YES.map(([h, p]) => `<div class="it"><span class="v yes">SÍ</span><h4>${h}</h4><p>${p}</p></div>`).join("");
+$("#scorePart").innerHTML = PART.map(([v, h, p]) => `<div class="it"><span class="v ${v}">${v === "no" ? "NO" : "PARCIAL"}</span><h4>${h}</h4><p>${p}</p></div>`).join("");
+
+/* ───────── deck engine ───────── */
+const slides = $$(".slide");
+const HOOKS = {
+  compra: (s, k) => showShot(k),
+  "cc-compra": listBuild(FLOW, true),
+  "cc-estilos": listBuild(STYLES, false),
+  "cc-patrones": listBuild(PATTERNS, false),
+  gcp: (s, k) => depMode(k),
+};
+const meta = slides.map((s) => ({ id: s.dataset.id, title: s.dataset.title.replace("&amp;", "&"), sec: s.dataset.sec.replace("&amp;", "&"), builds: Number(s.dataset.builds || 0) }));
+let cur = 0, build = 0;
+function render() {
+  slides.forEach((s, i) => s.classList.toggle("active", i === cur));
+  const s = slides[cur];
+  $$("[data-b]", s).forEach((e) => e.classList.toggle("pending", Number(e.dataset.b) > build));
+  if (HOOKS[s.dataset.id]) HOOKS[s.dataset.id](s, build);
+  $("#stage").classList.toggle("dark-on", s.classList.contains("dark"));
+  $("#secName").textContent = ["Inicio", "Cierre"].includes(meta[cur].sec) ? "" : meta[cur].sec;
+  $("#num").innerHTML = `<b>${String(cur + 1).padStart(2, "0")}</b> / ${slides.length}`;
+  $("#progress").style.width = `${((cur + (meta[cur].builds ? build / (meta[cur].builds + 1) : 0)) / (slides.length - 1)) * 100}%`;
+  const h = `#/${s.dataset.id}${build ? "/" + build : ""}`;
+  if (location.hash !== h) history.replaceState(null, "", h);
+  publish();
+}
+function go(i, b = 0) { cur = Math.max(0, Math.min(slides.length - 1, i)); build = Math.max(0, Math.min(meta[cur].builds, b)); render(); }
+function next() { if (build < meta[cur].builds) { build++; render(); } else if (cur < slides.length - 1) go(cur + 1); }
+function prev() { if (build > 0) { build--; render(); } else if (cur > 0) go(cur - 1, meta[cur - 1].builds); }
+function fromHash() {
+  const m = location.hash.match(/^#\/([\w-]+)(?:\/(\d+))?/);
+  if (!m) return null;
+  const i = meta.findIndex((x) => x.id === m[1]);
+  return i < 0 ? null : [i, Number(m[2] || 0)];
+}
+
+/* scale the 1920x1080 stage to the window */
+function fit() { const k = Math.min(innerWidth / 1920, innerHeight / 1080); $("#stage").style.transform = `scale(${k}) translate(-50%,-50%)`; }
+addEventListener("resize", fit); fit();
+
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (["ArrowRight", "ArrowDown", "PageDown", " ", "Enter"].includes(e.key)) { e.preventDefault(); next(); }
+  else if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace"].includes(e.key)) { e.preventDefault(); prev(); }
+  else if (e.key === "Home") go(0);
+  else if (e.key === "End") go(slides.length - 1);
+  else if (e.key === "f" || e.key === "F") { try { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); } catch (_) {} }
+});
+$("#nextBtn").addEventListener("click", next);
+$("#prevBtn").addEventListener("click", prev);
+let mt; addEventListener("mousemove", () => { document.body.classList.add("mouse"); clearTimeout(mt); mt = setTimeout(() => document.body.classList.remove("mouse"), 1800); });
+addEventListener("hashchange", () => { const h = fromHash(); if (h && (h[0] !== cur || h[1] !== build)) go(h[0], h[1]); });
+
+/* presenter sync: presenter.html follows the deck and can drive it */
+const chan = "BroadcastChannel" in window ? new BroadcastChannel("aforo-deck") : null;
+const seen = new Set();
+function publish() {
+  const msg = { type: "state", cur, build, slides: meta, t: Date.now() };
+  if (chan) chan.postMessage(msg);
+  try { localStorage.setItem("aforo-deck-state", JSON.stringify(msg)); } catch (_) {}
+}
+function handle(m) {
+  if (!m || !m.cid || seen.has(m.cid)) return;
+  seen.add(m.cid);
+  if (m.type === "next") next();
+  else if (m.type === "prev") prev();
+  else if (m.type === "go") go(m.cur, m.build || 0);
+  else if (m.type === "hello") publish();
+}
+if (chan) chan.onmessage = (e) => handle(e.data);
+addEventListener("storage", (e) => { if (e.key === "aforo-deck-cmd" && e.newValue) { try { handle(JSON.parse(e.newValue)); } catch (_) {} } });
+
+const h0 = fromHash();
+h0 ? go(h0[0], h0[1]) : go(0);
+})();
+</script>
+</body>
+</html>
