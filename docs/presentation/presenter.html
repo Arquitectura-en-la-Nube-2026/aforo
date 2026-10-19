@@ -249,7 +249,7 @@ const NOTES = {
   "cc-estilos": ["Microservicios: un desplegable por capacidad.", "Eventos: síncrono cuando el actor espera, asíncrono cuando el consumidor puede ponerse al día."],
   "cc-patrones": ["Un patrón por clic; cada uno vive en una caja concreta.", "Si hay poco tiempo: API Gateway, Saga, Outbox, Breaker y saltar.", "<b>Operador:</b> lanzar E-01 ahora (e01.cjs), para que la ventana siga abierta cuando Cristian llegue a E-01."],
   "cc-propuesto": ["Lo punteado está en el diseño y no en el corte.", "La desviación más grande: el pase no se verifica al reservar."],
-  e02: ["<b>Operador:</b> correr E-02 ahora (200 compradores).", "Exactamente 10 creadas, 190 SOLD_OUT, 0 sobreventa.", "Honestidad: p95 808 ms en ráfaga no cumple; 75 ms dosificado. Por eso existe la sala de espera."],
+  e02: ["<b>Operador:</b> correr E-02 ahora (200 compradores, Palco de Festival Estéreo).", "Exactamente 6 creadas, 194 SOLD_OUT, 0 sobreventa.", "Honestidad: p95 808 ms en ráfaga no cumple; 75 ms dosificado. Por eso existe la sala de espera."],
   "sec-c": ["Segunda parte de la arquitectura: despliegue e infraestructura."],
   gcp: ["Cada clic cambia el estado del ambiente.", "make down: la base detenida, Redis no existe, todo en cero.", "make redis-up: Memorystore se crea solo para la ventana (ADR-0001).", "Ventana: el prewarmer sube Gateway y Queue a 1."],
   datos: ["Tres paradigmas, elegidos por patrón de acceso.", "Firestore es del doble de prueba: decirlo."],
@@ -310,7 +310,7 @@ document.addEventListener("keydown", (e) => {
 const TIMERS = [
   { id: "poison", t: "E-05 · make poison", m: [[96, "dead letters (≈ 1:36)"], [210, "incidente y correo (≈ 3:30)"]] },
   { id: "e01", t: "E-01 · evento publicado", m: [[5, "mínimo 1 en gateway y queue"], [180, "abre la venta"], [480, "cierre: vuelve a 0 (≈ minuto 17)"]] },
-  { id: "e02", t: "E-02 · 200 compradores", m: [[480, "vencen las 10 reservas"]] },
+  { id: "e02", t: "E-02 · 200 compradores", m: [[480, "vencen las 6 reservas de Palco"]] },
 ];
 const tStart = {};
 $("#timers").innerHTML = TIMERS.map((x) => `<div class="timer" id="tm-${x.id}"><b>${x.t}</b><output>—</output><ul>${x.m.map(([s, l]) => `<li>${fmt(s * 1000)} · ${l}</li>`).join("")}</ul><button class="btn" data-timer="${x.id}">Marcar inicio</button></div>`).join("");
@@ -336,15 +336,15 @@ function renderTimers() {
 const ACTIONS = [
   { id: "trace", prep: "corte", run: "sec-a", t: "Paso 10 · seguir la compra en Logs Explorer", when: "≈ 5:00, cuando Sergio vea «Pago confirmado»",
     p: "Abre Logs Explorer en el editor de consultas.",
-    c: ['resource.labels.service_name=("aforo-gateway" OR "aforo-orders" OR "aforo-inventory")\njsonPayload.route=~"orders|reservations"\ntimestamp>="${since}"'], after: "Clic en un correlationId → «Show matching entries»." },
+    c: ['resource.labels.service_name=("aforo-gateway" OR "aforo-orders" OR "aforo-inventory")\njsonPayload.route=~"orders|reservations"\njsonPayload.status=201\ntimestamp>="${since}"'], after: "En el editor de consultas («Mostrar consulta»), no en la barra de búsqueda. Clic en el correlationId de POST /api/v1/orders → «Show matching entries»: inventory, orders y gateway con el mismo id." },
   { id: "poison", prep: "traza", run: "sec-b", t: "E-05 · enviar el mensaje envenenado", when: "≈ 6:00, al terminar la demo de Sergio",
     p: "Ten la terminal lista: se envía al abrir tu bloque de C&C.",
     c: ["make poison TOPIC=aforo.catalog.event-published"], after: "Pega abajo el correlationId que imprime. «Hecho» inicia su temporizador. El correo de la alerta llegará en ≈ 3:30, a mitad de la charla: «No molestar» activado.", timer: "poison" },
   { id: "e01", prep: "cc-estilos", run: "cc-patrones", t: "E-01 · publicar el evento de demo", when: "≈ 9:00, en «Dónde vive cada patrón»",
     p: "Abre una segunda terminal: el script queda corriendo ~4 min.",
     c: ["node docs/evidence/e01-prewarming/e01.cjs"], after: "Abre en 3 min y cierra en 8. «Hecho» inicia su temporizador.", timer: "e01" },
-  { id: "e02", prep: "cc-propuesto", run: "e02", t: "E-02 · 200 compradores sobre 10 localidades", when: "≈ 10:00, en «200 compradores»",
-    c: ["node docs/evidence/e02-concurrency/e02-gateway.cjs 200"], after: 'Esperado: answers {"201":10,"409 SOLD_OUT":190} y oversold=0.', timer: "e02" },
+  { id: "e02", prep: "cc-propuesto", run: "e02", t: "E-02 · 200 compradores sobre 6 localidades (Palco)", when: "≈ 10:00, en «200 compradores»",
+    c: ["E02_EVENT=8f1b2c3d-0000-4000-8000-000000000001 E02_SECTOR=a1a1a1a1-0000-4000-8000-000000000003 node docs/evidence/e02-concurrency/e02-gateway.cjs 200"], after: 'Esperado: answers {"201":6,"409 SOLD_OUT":194} y oversold=0. Palco de Festival Estéreo: Mesa de Noche de Jazz quedó vendida con pagos reales.', timer: "e02" },
   { id: "rollback", prep: "iac", run: "pipeline", t: "Blue/green · rollback en vivo de orders", when: "≈ 13:00, en «Blue/green»",
     p: "Lista las revisiones y pega abajo la anterior a la actual.",
     pc: ["gcloud run revisions list --service aforo-orders --region southamerica-east1 --limit 3"],
@@ -358,7 +358,7 @@ const ACTIONS = [
     p: "Abre Monitoring → Alerting en otra pestaña.",
     c: ['jsonPayload.correlationId="${poison}"'], after: "Los 400 de los tres consumidores, tres líneas dead_letter y el incidente abierto (y el correo)." },
   { id: "expiry", prep: "nativo-si", run: "nativo-no", optional: true, t: "Opcional · las reservas de E-02 vencieron", when: "≈ 18:00, si da el tiempo",
-    c: ['resource.labels.service_name="aforo-inventory"\njsonPayload.route=~"/expire"'], after: "Cupos de vuelta a 10 y órdenes EXPIRED." },
+    c: ['resource.labels.service_name="aforo-inventory"\njsonPayload.route=~"/expire"'], after: "Palco de vuelta a 6 y órdenes EXPIRED." },
   { id: "down", prep: "veredicto", run: "gracias", t: "Apagar el ambiente", when: "al terminar las preguntas",
     c: ["make down"], after: "No dejar dev encendido." },
 ];

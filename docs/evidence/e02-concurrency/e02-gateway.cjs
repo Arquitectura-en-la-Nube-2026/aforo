@@ -2,11 +2,13 @@
 // 10-seat "Mesa" sector of "Noche de Jazz". gateway -> orders -> inventory, as in a real sale.
 // No queue pass: it is never verified downstream (D-07), so the burst skips the waiting room.
 //   node e02-gateway.cjs [buyers=200] [spreadMs=0]   -> appends to ./run-dev.log, raw results in ./run-dev*.json
+// E02_EVENT and E02_SECTOR target another seeded sector (paid seats never come back, so a sold-out
+// Mesa needs one), e.g. Palco (6 seats) of "Festival Estéreo 2026".
 // spreadMs > 0 sends the orders evenly over that window, like a metered admission.
 const fs = require("fs");
 const GW = "https://aforo-gateway-68220265740.southamerica-east1.run.app";
-const EVENT = "8f1b2c3d-0000-4000-8000-000000000003";
-const MESA = "a3a3a3a3-0000-4000-8000-000000000001";
+const EVENT = process.env.E02_EVENT || "8f1b2c3d-0000-4000-8000-000000000003";
+const MESA = process.env.E02_SECTOR || "a3a3a3a3-0000-4000-8000-000000000001";
 const N = Number(process.argv[2] ?? 200);
 const SPREAD = Number(process.argv[3] ?? 0);
 const LOG = `${__dirname}/run-dev.log`;
@@ -46,7 +48,7 @@ async function order(token) {
 
 (async () => {
   const run = Date.now();
-  out(`--- E-02 via gateway (run=${run}, buyers e02-${run}-<i>@aforo.dev): ${N} buyers x 1 seat, Mesa (10 seats), ${SPREAD ? `spread over ${SPREAD} ms` : "all at once"} ---`);
+  out(`--- E-02 via gateway (run=${run}, buyers e02-${run}-<i>@aforo.dev): ${N} buyers x 1 seat, sector ${MESA} of event ${EVENT}, ${SPREAD ? `spread over ${SPREAD} ms` : "all at once"} ---`);
   const before = await available();
   out(`available before: ${before}`);
 
