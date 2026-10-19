@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aforo · Consola (orden 2)</title>
+<link rel="icon" href="../../apps/web/src/app/icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Presenter and operator console for the second screen. Follows index.html and can drive it. */
+:root{
+  --navy:#021557; --royal:#0437c4; --azure:#0382fb; --gold:#fdd207; --amber:#faa703;
+  --night:#010b33; --panel:#0a1748; --panel2:#0e1f5e; --line:#22357a; --text:#eef2ff; --muted:#9fb0e8;
+  --good:#5fd39b; --bad:#ff8a80;
+  --display:"Outfit","Avenir Next","Segoe UI",sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--night);color:var(--text);font:16px/1.5 var(--display)}
+code,pre,.mono{font-family:var(--mono);font-variant-ligatures:none}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,summary:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.wrap{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;padding:16px;min-height:100vh}
+@media (max-width:1100px){.wrap{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px 20px;min-width:0}
+.lbl{font:600 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+
+/* clock */
+.clock{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.clock output{font:700 64px/1 var(--display);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.clock .state{font:500 16px var(--mono);color:var(--muted)}
+.clock.late .state{color:var(--bad)}
+.btn{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-weight:600}
+.btn.gold{background:var(--gold);border-color:var(--gold);color:var(--navy)}
+.btn.big{font-size:22px;padding:12px 22px}
+.bar{position:relative;display:flex;margin-top:16px;height:44px;border-radius:10px;overflow:hidden;border:1px solid var(--line)}
+.bar div{position:relative;display:flex;align-items:center;justify-content:center;font:600 12px var(--mono);color:var(--muted);border-right:1px solid var(--line);background:var(--panel2);white-space:nowrap;overflow:hidden}
+.bar div:last-child{border-right:0}
+.bar div.cur{background:var(--royal);color:#fff}
+.bar .now{position:absolute;top:0;bottom:0;width:3px;background:var(--gold);box-shadow:0 0 10px var(--gold);transition:left 1s linear}
+
+/* current slide */
+.cur-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-top:18px}
+.cur-head h1{margin:4px 0 0;font:800 40px/1.05 var(--display);letter-spacing:-.02em}
+.cur-head .n{font:600 20px var(--mono);color:var(--gold)}
+.builds{display:flex;gap:6px;margin-top:10px}
+.builds i{width:28px;height:8px;border-radius:4px;background:var(--line)}
+.builds i.on{background:var(--gold)}
+.notes{margin-top:16px;font-size:24px;line-height:1.45}
+.notes ul{margin:0;padding-left:24px}
+.notes li{margin-bottom:8px}
+.notes b{color:var(--gold);font-weight:600}
+.notes .say{color:var(--muted);font-size:18px;margin-top:10px}
+.nextup{margin-top:18px;padding-top:14px;border-top:1px dashed var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px}
+.nextup span{font-size:20px}
+.nextup.handoff{border-top:2px solid var(--gold)}
+.nextup.handoff #nextTitle b{color:var(--gold)}
+.speaker{display:inline-flex;align-items:center;gap:10px;margin-top:14px;background:var(--gold);color:var(--navy);border-radius:999px;padding:6px 16px 6px 8px;font:700 22px var(--display)}
+.speaker i{font:600 12px var(--mono);letter-spacing:.12em;text-transform:uppercase;background:var(--navy);color:var(--gold);border-radius:999px;padding:4px 10px;font-style:normal}
+.lineup{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.lineup li{display:grid;gap:2px;border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:15px;background:var(--panel2);min-width:0}
+.lineup li b{font-weight:700}
+.lineup li span{color:var(--muted);font:500 12px/1.35 var(--mono)}
+.lineup li.cur{border-color:var(--gold);background:var(--royal)}
+.lineup li.cur span{color:#fff}
+.ctrl{display:flex;gap:10px}
+.conn{font:500 13px var(--mono);color:var(--muted)}
+.conn.ok{color:var(--good)}
+
+/* operator */
+.timers{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:12px}
+@media (max-width:700px){.timers{grid-template-columns:minmax(0,1fr)}}
+.timer{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.timer b{display:block;font-size:15px}
+.timer output{font:600 26px var(--mono)}
+.timer ul{margin:6px 0 8px;padding-left:16px;font-size:13px;color:var(--muted)}
+.timer li.done{color:var(--good)}
+.timer li.next{color:var(--text);font-weight:600}
+/* operator guide */
+.oppanel{align-self:start;position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto}
+@media (max-width:1100px){.oppanel{position:static;max-height:none}}
+.opnow{margin-top:14px;display:grid;gap:10px}
+.opcard{border-radius:14px;padding:14px 16px;border:2px solid var(--line);background:var(--panel2)}
+.opcard .tag{font:700 12px var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.opcard h3{margin:4px 0 6px;font:700 22px/1.2 var(--display)}
+.opcard p{margin:4px 0;font-size:15px}
+.opcard .when{color:var(--muted);font-size:14px}
+.opcard.now{border-color:var(--gold);background:#1d2a12;box-shadow:0 0 0 4px rgba(253,210,7,.18);animation:pulse 1.6s ease-in-out infinite}
+.opcard.now .tag{color:var(--gold)}
+.opcard.late{border-color:var(--bad);background:#2a1418;animation:none}
+.opcard.late .tag{color:var(--bad)}
+.opcard.prep{border-color:var(--azure)}
+.opcard.prep .tag{color:var(--azure)}
+.opcard.idle .tag{color:var(--muted)}
+.opcard .acts{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+@keyframes pulse{50%{box-shadow:0 0 0 8px rgba(253,210,7,.06)}}
+.vars{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;margin-top:12px;font-size:14px;color:var(--muted)}
+.vars input{background:var(--night);border:1px solid var(--line);border-radius:8px;color:var(--text);font:13px var(--mono);padding:6px 8px;min-width:0}
+.vars input:focus{outline:2px solid var(--gold)}
+ol.run{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:6px}
+ol.run li{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:7px 10px;background:var(--panel2);font-size:14px}
+ol.run li .st{width:14px;height:14px;border-radius:50%;border:2px solid var(--muted)}
+ol.run li small{color:var(--muted);font:500 12px var(--mono);white-space:nowrap}
+ol.run li.prep .st{border-color:var(--azure)}
+ol.run li.now{border-color:var(--gold)} ol.run li.now .st{background:var(--gold);border-color:var(--gold)}
+ol.run li.late{border-color:var(--bad)} ol.run li.late .st{background:var(--bad);border-color:var(--bad)}
+ol.run li.done{opacity:.45} ol.run li.done .st{background:var(--good);border-color:var(--good)}
+.banner{position:fixed;left:50%;top:14px;transform:translate(-50%,-140%);z-index:50;max-width:min(760px,92vw);background:var(--gold);color:var(--navy);border-radius:14px;padding:12px 18px;font:700 18px/1.3 var(--display);box-shadow:0 14px 40px rgba(0,0,0,.45);transition:transform .3s;cursor:pointer}
+.banner.info{background:var(--azure);color:#fff}
+.banner.show{transform:translate(-50%,0)}
+pre.cmd{position:relative;margin:8px 0 2px;padding:9px 70px 9px 12px;background:var(--night);border:1px solid var(--line);border-radius:10px;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
+pre.cmd button{position:absolute;top:6px;right:6px;font:600 12px var(--display);background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:2px 8px}
+
+/* Q&A */
+details.qa{border-top:1px solid var(--line);padding:10px 0}
+details.qa summary{font-weight:600;font-size:17px}
+details.qa p{margin:8px 0 0;color:#d6defc;font-size:16px}
+.keys{color:var(--muted);font-size:13px;margin-top:10px}
+.kbd{font:500 12px var(--mono);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px}
+</style>
+</head>
+<body>
+<div class="banner" id="banner" role="status" aria-live="assertive" hidden></div>
+<div class="wrap">
+  <div style="display:grid;gap:16px;align-content:start">
+    <section class="panel">
+      <div class="clock" id="clock">
+        <output id="elapsed">0:00</output>
+        <div>
+          <div class="state" id="state">reloj detenido</div>
+          <div style="display:flex;gap:8px;margin-top:6px"><button class="btn gold" id="clockBtn">Iniciar</button><button class="btn" id="clockReset">Reiniciar</button></div>
+        </div>
+      </div>
+      <div class="bar" id="bar"></div>
+      <ol class="lineup" id="lineup"></ol>
+    </section>
+
+    <section class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span class="lbl">En pantalla</span><span class="conn" id="conn">esperando la presentación…</span></div>
+      <div class="cur-head"><div><span class="lbl" id="curSec"></span><h1 id="curTitle">Abra index.html en la otra pantalla</h1><span class="speaker" id="speaker" hidden><i>Habla</i><span id="speakerName"></span></span></div><span class="n" id="curN"></span></div>
+      <div class="builds" id="builds"></div>
+      <div class="notes" id="notes"></div>
+      <div class="nextup" id="nextup"><span><span class="lbl">Sigue</span>&nbsp; <span id="nextTitle">—</span></span>
+        <div class="ctrl"><button class="btn big" id="prev" aria-label="Anterior">‹</button><button class="btn big gold" id="next" aria-label="Siguiente">›</button></div></div>
+      <p class="keys"><span class="kbd">←</span> <span class="kbd">→</span> mueven la presentación desde aquí · <span class="kbd">T</span> reloj</p>
+    </section>
+
+    <section class="panel">
+      <span class="lbl">Preguntas difíciles · respuestas honestas</span>
+      <div id="qa" style="margin-top:8px"></div>
+    </section>
+  </div>
+
+  <section class="panel oppanel">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="lbl">Operador · Julián · demos en vivo</span><button class="btn" id="soundBtn" aria-pressed="true">🔔 sonido</button></div>
+    <p style="margin:8px 0 0;color:var(--muted);font-size:14px">Antes: <code>make up</code> y <code>make redis-up</code> (≥ 15 min), <code>make status</code> con <code>mock_fault_mode=none</code>, fila calentada con un ingreso. Pestañas: la web, Logs Explorer, Monitoring → Alerting, Cloud Run (gateway, queue), dos terminales.</p>
+    <div class="opnow" id="opnow"></div>
+    <div class="timers" id="timers"></div>
+    <ol class="run" id="run"></ol>
+  </section>
+</div>
+
+<script>
+(() => {
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+const cmd = (t) => `<pre class="cmd">${esc(t)}<button type="button" data-copy>copiar</button></pre>`;
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-copy]");
+  if (!b) return;
+  try { navigator.clipboard.writeText(b.parentElement.firstChild.textContent).then(() => { b.textContent = "copiado"; setTimeout(() => (b.textContent = "copiar"), 1200); }); } catch (_) {}
+});
+
+/* ───────── sections and clock ───────── */
+const SECTIONS = [["Inicio", 0, 1], ["C&C", 1, 5], ["Despliegue", 5, 8], ["Compra", 8, 13], ["Concurrencia", 13, 14], ["Nativo de la nube", 14, 17], ["Cierre", 17, 20]];
+const SHORT = { "Nativo de la nube": "Nativo", "Escenarios de calidad": "Calidad", "Concurrencia": "E-02" };
+$("#bar").innerHTML = SECTIONS.map(([n, a, b]) => `<div style="flex:${b - a}" data-sec="${esc(n)}" title="${esc(n)} · ${a}–${b} min">${esc(b - a > 1 ? `${SHORT[n] || n} · ${a}–${b}′` : `${a}′`)}</div>`).join("") + `<span class="now" id="now" style="left:0"></span>`;
+let start = null, acc = 0, deck = null;
+const elapsed = () => acc + (start ? Date.now() - start : 0);
+function toggle() {
+  if (start) { acc += Date.now() - start; start = null; $("#clockBtn").textContent = "Seguir"; }
+  else { start = Date.now(); $("#clockBtn").textContent = "Pausa"; }
+  tick();
+}
+$("#clockBtn").addEventListener("click", toggle);
+// Resets everything for a fresh run: clock, operator timers, and the deck back to the title slide.
+$("#clockReset").addEventListener("click", () => {
+  if (!confirm("¿Reiniciar el reloj y los temporizadores, y volver la presentación a la portada?")) return;
+  start = null; acc = 0; $("#clockBtn").textContent = "Iniciar";
+  Object.keys(tStart).forEach((k) => delete tStart[k]);
+  $$(".timer").forEach((box) => {
+    $("output", box).textContent = "—";
+    $("[data-timer]", box).textContent = "Marcar inicio";
+    $$("li", box).forEach((li) => li.classList.remove("done", "next"));
+  });
+  resetOps();
+  send({ type: "go", cur: 0, build: 0 });
+  tick();
+});
+function tick() {
+  const ms = elapsed(), min = ms / 60000;
+  $("#elapsed").textContent = fmt(ms);
+  $("#now").style.left = `calc(${Math.min(100, (min / 20) * 100)}% - 1px)`;
+  const sec = deck ? deck.slides[deck.cur].sec : null, s = SECTIONS.find((x) => x[0] === sec);
+  $$("#bar div").forEach((d) => d.classList.toggle("cur", d.dataset.sec === sec));
+  let state = ms ? "" : "reloj detenido";
+  if (s && ms) { const left = s[2] * 60000 - ms; state = left >= 0 ? `${fmt(left)} para cerrar «${s[0]}»` : `«${s[0]}» va ${fmt(-left)} tarde`; $("#clock").classList.toggle("late", left < 0); }
+  else $("#clock").classList.remove("late");
+  if (ms > 20 * 60000) state = `${fmt(ms - 20 * 60000)} sobre los 20 min`;
+  $("#state").textContent = state;
+  renderTimers();
+}
+setInterval(tick, 1000);
+
+/* ───────── who speaks each block ───────── */
+const BLOCKS = [
+  ["Luis Esteban", "Apertura", "0–1′", ["portada", "problema", "corte"]],
+  ["Julián", "C&C · vista y estilos", "1–3′", ["sec-b", "cc-vista", "cc-compra", "cc-estilos"]],
+  ["Daniel Felipe", "Patrones", "3–5′", ["cc-patrones", "cc-propuesto"]],
+  ["Juan José", "Despliegue e IaC", "5–7′", ["sec-c", "gcp", "datos", "iac"]],
+  ["Cristian", "FaaS", "7–8′", ["faas"]],
+  ["Sergio", "Demo de compra", "8–13′", ["sec-a", "compra", "traza"]],
+  ["Daniel Felipe", "Concurrencia (E-02)", "13–14′", ["e02"]],
+  ["Daniel Felipe", "Nativo de la nube", "14–16′", ["nativo-si", "nativo-no", "veredicto"]],
+  ["Luis Esteban", "Tesis (cierre)", "16–17′", ["por-que-nube"]],
+  ["Juan José", "Preguntas (modera)", "17–20′", ["gracias"]],
+];
+const blockOf = (id) => BLOCKS.findIndex((b) => b[3].includes(id));
+$("#lineup").innerHTML = BLOCKS.map(([who, what, when], i) => `<li data-block="${i}"><b>${esc(who)}</b><span>${esc(when)} · ${esc(what)}</span></li>`).join("");
+
+/* ───────── speaker notes, by slide id ───────── */
+const NOTES = {
+  portada: ["Presentarse: Equipo F, Aforo.", "Una frase: construimos y desplegamos el camino de compra del diseño de las entregas 1 a 3."],
+  problema: ["Tres presiones del dominio, que vienen de los escenarios de calidad de la Entrega 3.", "Picos de 3.000 compradores en 60 s; cero sobreventa; costo en reposo bajo.", "Todo lo que sigue responde a una de estas tres."],
+  "por-que-nube": ["La tesis de toda la charla: cada presión del problema tiene una respuesta nativa de la nube.", "Picos → capacidad elástica. Cero sobreventa → servicios dueños de sus datos. Costo → pago por uso.", "Cerrar con la frase de abajo: un servidor fijo para el pico paga ese pico todos los días; uno para el promedio se cae al abrir.", "Cerramos aquí: cada sección que vimos mostró una de estas tres respuestas; la columna «Dónde se ve» es el resumen."],
+  corte: ["Construimos el camino de compra completo, no todo el diseño.", "Fuera: emisión, notificaciones, identidad gestionada, Edge/WAF y verificación del pase. Decirlo antes de que lo pregunten."],
+  "sec-a": ["Pasamos a la demo en vivo: cambiar a la pestaña de la web.", "URL: aforo-web-68220265740.southamerica-east1.run.app, correo nuevo."],
+  compra: ["<b>Solo si el vivo falla</b>, o para repasar. Cada clic avanza un paso.", "Paso 4: el pase dura 10 min. Paso 6: la disponibilidad bajó en dos. Paso 8: PAID en menos de 5 s."],
+  traza: ["Mismo correlationId en gateway, orders, inventory.", "El queue_pass_received se registra pero no se verifica (D-07): decirlo.", "Siguiente clic: el pago sale por el outbox como OrderPaid."],
+  "sec-b": ["Ahora la arquitectura: primero componentes y conectores."],
+  "cc-vista": ["Cinco servicios en Cloud Run, cada uno con su almacén.", "Arriba la entrada (Web, Gateway), al centro la lógica, abajo la mensajería y las dos funciones.", "Las bandas de color son los tres paradigmas de persistencia."],
+  "cc-compra": ["La compra que Sergio hará en vivo más adelante, salto por salto.", "Énfasis: reserva (transacción en Inventory) y webhook (firma + inbox)."],
+  "cc-estilos": ["Microservicios: un desplegable por capacidad.", "Eventos: síncrono cuando el actor espera, asíncrono cuando el consumidor puede ponerse al día."],
+  "cc-patrones": ["Un patrón por clic; cada uno vive en una caja concreta.", "Si hay poco tiempo: API Gateway, Saga, Outbox, Breaker y saltar."],
+  "cc-propuesto": ["Lo punteado está en el diseño y no en el corte.", "La desviación más grande: el pase no se verifica al reservar."],
+  e02: ["<b>Operador:</b> correr E-02 ahora (200 compradores, Palco de Festival Estéreo).", "Exactamente 6 creadas, 194 SOLD_OUT, 0 sobreventa.", "Honestidad: p95 808 ms en ráfaga no cumple; 75 ms dosificado. Por eso existe la sala de espera."],
+  "sec-c": ["Segunda parte de la arquitectura: despliegue e infraestructura."],
+  gcp: ["Cada clic cambia el estado del ambiente.", "make down: la base detenida, Redis no existe, todo en cero.", "make redis-up: Memorystore se crea solo para la ventana (ADR-0001).", "Ventana: el prewarmer sube Gateway y Queue a 1."],
+  datos: ["Tres paradigmas, elegidos por patrón de acceso.", "Firestore es del doble de prueba: decirlo."],
+  iac: ["Terraform: configuración. CI: código y tráfico. prewarmer: los mínimos.", "Así no se pisan entre ellos (ADR-0004)."],
+  faas: ["Las dos funciones realizan tácticas del diseño: precalentar (E-01) y alertar (E-05).", "El mock de pagos también es función, pero es un doble de prueba: no cuenta."],
+  "nativo-si": ["Lo que el sistema en ejecución demuestra.", "No leer todo: elegir 3 (inmutable, IaC, sin estado)."],
+  "nativo-no": ["Lo que falta, sin rodeos.", "Alta disponibilidad: no. Costo: falta la cifra de facturación."],
+  veredicto: ["Leer el veredicto completo.", "Pausa."],
+  gracias: ["Preguntas. Las respuestas están abajo en esta consola.", "<b>Operador:</b> make down al terminar."],
+};
+
+/* ───────── deck sync ───────── */
+const chan = "BroadcastChannel" in window ? new BroadcastChannel("aforo-deck-2") : null;
+const send = (m) => {
+  m.cid = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  if (chan) chan.postMessage(m);
+  try { localStorage.setItem("aforo-deck-2-cmd", JSON.stringify(m)); } catch (_) {}
+};
+function onState(s) {
+  if (!s || s.type !== "state") return;
+  deck = s;
+  const m = s.slides[s.cur], nx = s.slides[s.cur + 1];
+  $("#conn").textContent = "presentación conectada"; $("#conn").classList.add("ok");
+  $("#curSec").textContent = m.sec;
+  $("#curTitle").textContent = m.title;
+  $("#curN").textContent = `${String(s.cur + 1).padStart(2, "0")} / ${s.slides.length}`;
+  $("#builds").innerHTML = m.builds ? Array.from({ length: m.builds + 1 }, (_, i) => `<i class="${i <= s.build ? "on" : ""}"></i>`).join("") : "";
+  const notes = NOTES[m.id] || [];
+  $("#notes").innerHTML = notes.length ? `<ul>${notes.map((n) => `<li>${n}</li>`).join("")}</ul>` : "";
+  const bi = blockOf(m.id), lastClick = !m.builds || s.build >= m.builds;
+  $("#speaker").hidden = bi < 0;
+  if (bi >= 0) $("#speakerName").textContent = BLOCKS[bi][0];
+  $$("#lineup li").forEach((li) => li.classList.toggle("cur", Number(li.dataset.block) === bi));
+  const nbi = nx ? blockOf(nx.id) : -1, handoff = lastClick && nx && nbi !== bi && nbi >= 0;
+  $("#nextup").classList.toggle("handoff", !!handoff);
+  $("#nextTitle").innerHTML = !lastClick ? esc(`${m.title} (clic ${s.build + 2} de ${m.builds + 1})`)
+    : !nx ? "fin"
+    : handoff ? `<b>Pasa a ${esc(BLOCKS[nbi][0])}</b> · ${esc(nx.title)}`
+    : esc(nx.title);
+  renderOps();
+  tick();
+}
+if (chan) chan.onmessage = (e) => onState(e.data);
+addEventListener("storage", (e) => { if (e.key === "aforo-deck-2-state" && e.newValue) { try { onState(JSON.parse(e.newValue)); } catch (_) {} } });
+$("#next").addEventListener("click", () => send({ type: "next" }));
+$("#prev").addEventListener("click", () => send({ type: "prev" }));
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (["ArrowRight", "PageDown"].includes(e.key)) { e.preventDefault(); send({ type: "next" }); }
+  else if (["ArrowLeft", "PageUp"].includes(e.key)) { e.preventDefault(); send({ type: "prev" }); }
+  else if (e.key === "t" || e.key === "T") toggle();
+});
+
+/* ───────── operator ───────── */
+const TIMERS = [
+  { id: "e02", t: "E-02 · 200 compradores", m: [[480, "vencen las 6 reservas de Palco"]] },
+];
+const tStart = {};
+$("#timers").innerHTML = TIMERS.map((x) => `<div class="timer" id="tm-${x.id}"><b>${x.t}</b><output>—</output><ul>${x.m.map(([s, l]) => `<li>${fmt(s * 1000)} · ${l}</li>`).join("")}</ul><button class="btn" data-timer="${x.id}">Marcar inicio</button></div>`).join("");
+const startTimer = (id) => { tStart[id] = Date.now(); const b = $(`[data-timer="${id}"]`); if (b) b.textContent = "Reiniciar"; renderTimers(); };
+$$("[data-timer]").forEach((b) => b.addEventListener("click", () => startTimer(b.dataset.timer)));
+const fired = new Set(); // timer milestones already announced
+function renderTimers() {
+  TIMERS.forEach((x) => {
+    const box = $("#tm-" + x.id), st = tStart[x.id];
+    if (!st) return;
+    const s = (Date.now() - st) / 1000;
+    $("output", box).textContent = fmt(s * 1000);
+    let marked = false;
+    $$("li", box).forEach((li, i) => {
+      const done = s >= x.m[i][0], key = `${x.id}:${i}:${st}`;
+      li.classList.toggle("done", done); li.classList.toggle("next", !done && !marked); if (!done) marked = true;
+      if (done && !fired.has(key)) { fired.add(key); if (s - x.m[i][0] < 5) notify(`${x.t}: ${x.m[i][1]}`, "info"); }
+    });
+  });
+}
+/* Operator guide, driven by the slide on screen: each action is prepared on one slide and run on another.
+   ${poison} and ${rev} come from the two inputs; ${since} is filled when the action becomes due. */
+const ACTIONS = [
+  { id: "trace", prep: "faas", run: "sec-a", t: "Paso 10 · seguir la compra en Logs Explorer", when: "≈ 12:00, cuando Sergio vea «Pago confirmado»",
+    p: "Abre Logs Explorer en el editor de consultas.",
+    c: ['resource.labels.service_name=("aforo-gateway" OR "aforo-orders" OR "aforo-inventory")\njsonPayload.route=~"orders|reservations"\njsonPayload.status=201\ntimestamp>="${since}"'], after: "En el editor de consultas («Mostrar consulta»), no en la barra de búsqueda. Clic en el correlationId de POST /api/v1/orders → «Show matching entries»: inventory, orders y gateway con el mismo id." },
+  { id: "e02", prep: "traza", run: "e02", t: "E-02 · 200 compradores sobre 6 localidades (Palco)", when: "≈ 13:00, en «200 compradores»",
+    c: ["E02_EVENT=8f1b2c3d-0000-4000-8000-000000000001 E02_SECTOR=a1a1a1a1-0000-4000-8000-000000000003 node docs/evidence/e02-concurrency/e02-gateway.cjs 200"], after: 'Esperado: answers {"201":6,"409 SOLD_OUT":194} y oversold=0. Palco de Festival Estéreo: Mesa de Noche de Jazz quedó vendida con pagos reales.', timer: "e02" },
+  { id: "down", prep: "por-que-nube", run: "gracias", t: "Apagar el ambiente", when: "al terminar las preguntas",
+    c: ["make down"], after: "No dejar dev encendido." },
+];
+const vars = { poison: "", rev: "", since: "" };
+const opDone = new Set(), opAnnounced = new Set(), sinceOf = {};
+const fill = (t, a) => t.replace(/\$\{(\w+)\}/g, (_, k) => (k === "since" ? sinceOf[a.id] || "<un minuto antes de la compra, UTC>" : vars[k] || `<${k === "poison" ? "correlationId de make poison" : "revisión anterior"}>`));
+const idx = (id) => (deck && id ? deck.slides.findIndex((x) => x.id === id) : -1);
+function opState(a) {
+  if (opDone.has(a.id)) return "done";
+  if (!deck) return "idle";
+  const c = deck.cur, r = idx(a.run), p = a.prep ? idx(a.prep) : r;
+  if (c > r + 1 && !a.optional) return "late";
+  if (c >= r) return "now";
+  if (c >= p) return "prep";
+  return "idle";
+}
+function card(a, st) {
+  const label = { now: "Ahora", late: "Atrasado · hazlo ya", prep: "Prepárate", idle: "Siguiente", done: "Hecho" }[st];
+  const pre = st === "prep" ? `${a.p ? `<p>${esc(a.p)}</p>` : ""}${(a.pc || []).map((x) => cmd(fill(x, a))).join("")}<p class="when">Al llegar: ${(a.c || []).map((x) => `<code>${esc(fill(x, a).split("\n")[0].slice(0, 70))}</code>`).join(" · ")}</p>` : "";
+  const body = st === "now" || st === "late" ? `${(a.pc || []).length && !vars.rev && a.id === "rollback" ? (a.pc || []).map((x) => cmd(fill(x, a))).join("") : ""}${(a.c || []).map((x) => cmd(fill(x, a))).join("")}${a.after ? `<p>${esc(a.after)}</p>` : ""}` : "";
+  return `<div class="opcard ${st}"><span class="tag">${label}</span><h3>${esc(a.t)}</h3><p class="when">${esc(a.when)}</p>${pre}${body}
+    ${st === "now" || st === "late" ? `<div class="acts"><button class="btn gold" data-done="${a.id}">Hecho${a.timer ? " · inicia temporizador" : ""}</button><span class="when" style="align-self:center">tecla H</span></div>` : ""}</div>`;
+}
+let lastOpHtml = "";
+function renderOps() {
+  const states = ACTIONS.map((a) => [a, opState(a)]);
+  states.forEach(([a, st]) => {
+    if ((st === "now" || st === "late") && !opAnnounced.has(a.id)) {
+      opAnnounced.add(a.id);
+      if (!sinceOf[a.id]) sinceOf[a.id] = new Date(Date.now() - 3 * 60000).toISOString().replace(/\.\d+Z$/, "Z");
+      notify(`Ahora: ${a.t}`);
+    }
+  });
+  const due = states.filter(([, st]) => st === "now" || st === "late"); // every due action, oldest first
+  const prep = states.find(([, st]) => st === "prep") || states.find(([, st]) => st === "idle");
+  const html = due.map(([a, st]) => card(a, st)).join("") + (prep ? card(prep[0], prep[1]) : "") + (!due.length && !prep ? `<div class="opcard idle"><span class="tag">Listo</span><h3>Nada pendiente</h3></div>` : "");
+  if (html !== lastOpHtml) { $("#opnow").innerHTML = html; lastOpHtml = html; }
+  $("#run").innerHTML = states.map(([a, st]) => `<li class="${st}"><span class="st"></span><span>${esc(a.t)}</span><small>${esc(a.when.split(",")[0])}</small></li>`).join("");
+}
+function markDone(id) {
+  const a = ACTIONS.find((x) => x.id === id);
+  if (!a) return;
+  opDone.add(id);
+  if (a.timer && !tStart[a.timer]) startTimer(a.timer);
+  renderOps();
+}
+document.addEventListener("click", (e) => { const b = e.target.closest("[data-done]"); if (b) markDone(b.dataset.done); });
+document.addEventListener("keydown", (e) => {
+  if (e.target.closest("input") || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "h" || e.key === "H") { const b = $("#opnow [data-done]"); if (b) markDone(b.dataset.done); }
+});
+function resetOps() {
+  opDone.clear(); opAnnounced.clear(); fired.clear();
+  Object.keys(sinceOf).forEach((k) => delete sinceOf[k]);
+  lastOpHtml = ""; renderOps();
+}
+
+/* banner + optional beep */
+let sound = true, bannerT;
+$("#soundBtn").addEventListener("click", (e) => { sound = !sound; e.currentTarget.setAttribute("aria-pressed", String(sound)); e.currentTarget.textContent = sound ? "🔔 sonido" : "🔕 sin sonido"; });
+function beep() {
+  if (!sound) return;
+  try {
+    const ctx = beep.ctx || (beep.ctx = new (window.AudioContext || window.webkitAudioContext)());
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = 880; g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+    o.connect(g).connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.4);
+  } catch (_) {}
+}
+function notify(text, kind) {
+  const b = $("#banner");
+  b.textContent = text; b.className = `banner${kind === "info" ? " info" : ""}`; b.hidden = false;
+  requestAnimationFrame(() => b.classList.add("show"));
+  beep();
+  clearTimeout(bannerT); bannerT = setTimeout(() => b.classList.remove("show"), kind === "info" ? 7000 : 9000);
+}
+$("#banner").addEventListener("click", (e) => e.currentTarget.classList.remove("show"));
+
+/* ───────── Q&A ───────── */
+const QA = [
+  ["¿Se puede reservar sin pasar por la fila?", "Sí. El pase se reenvía y se registra, pero nadie lo verifica (D-07); Inventory tampoco revisa la ventana. Hoy la fila la impone la interfaz. En el diseño, Inventory verifica localmente un pase firmado (RD-04). Es la desviación más grande del corte."],
+  ["¿Por qué el p95 de E-02 no cumple?", "Con 200 solicitudes a la vez, el pool de 2 conexiones de Inventory hace cola: 808 ms. Dosificadas a 20/s, como las libera la sala de espera, 75 ms. La integridad no depende de la carga: 0 sobreventa en ambos casos."],
+  ["¿Por qué un mínimo de 1 instancia y no 2–3?", "Tamaño del ambiente dev. El mecanismo está demostrado (0 → 1 → 0 sin intervención); la capacidad para 3.000 llegadas no la medimos."],
+  ["¿Por qué el circuit breaker vive en memoria?", "Evita una llamada a Redis en cada pago. El costo: el estado es por instancia, así que Orders está limitado a 1 instancia en dev para que el disparo sea determinista (ADR-0005)."],
+  ["¿Por qué no Redis en un contenedor de Cloud Run?", "Cloud Run no acepta tráfico TCP crudo (puerto 6379); como sidecar ataría la fila a una instancia. Memorystore 24/7 rompe el presupuesto, así que se crea y se destruye por ventana con Terraform (ADR-0001)."],
+  ["¿Por qué el mock de pagos no cuenta como FaaS?", "Es una función, pero es un doble de prueba de un proveedor externo. Las dos FaaS propias realizan tácticas del diseño: precalentamiento (E-01) y alerta de DLQ (E-05) (D-21)."],
+  ["¿Cómo saben que el API cumple el contrato?", "Contratos OpenAPI y JSON Schema validados en CI con Redocly, y validación de entrada en cada servicio. No hay pruebas de contrato automáticas contra las revisiones desplegadas."],
+  ["¿Cómo secuenciarían un cambio de esquema?", "Expand/contract: la migración corre como job antes de mover tráfico, así que debe ser compatible con la versión anterior; un release posterior retira lo viejo. El mecanismo está en el pipeline; en el corte solo corrió 001_init.sql."],
+  ["¿Qué pasa si el pago se aprueba cuando la reserva ya venció?", "Confirmación y vencimiento compiten por la misma fila ACTIVE; gana quien actualiza primero. Si ganó el vencimiento, la orden pasa a REFUND_PENDING y se reembolsa (E3-ADR-03). Caso borde abierto: si el vencimiento aún no corrió, Inventory confirma aunque expires_at ya pasó."],
+  ["¿Qué no demostraron?", "E-03 (falla de zona: base zonal sin failover) y E-08 (sin Edge ni pruebas de ataque). E-04 se excluyó en la Entrega 3. E-07 sin cifras de facturación."],
+  ["¿Por qué el breaker se reabrió al recuperarse?", "La prueba half-open cayó en el arranque en frío del mock (2,8 s > timeout de 2 s). Lección: los timeouts y las sondas del breaker deben calibrarse contra el cold start de la dependencia."],
+  ["¿Qué permisos tiene CI?", "La cuenta github-ci entra por Workload Identity Federation, sin llaves, pero tiene rol Owner en el proyecto: aceptado para el prototipo, lejos de mínimo privilegio."],
+];
+$("#qa").innerHTML = QA.map(([q, a]) => `<details class="qa"><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join("");
+
+
+/* start: render the guide, then pick up the deck's last known state and ask it for a fresh one */
+renderOps();
+try { const last = localStorage.getItem("aforo-deck-2-state"); if (last) onState(JSON.parse(last)); } catch (_) {}
+send({ type: "hello" });
+tick();
+})();
+</script>
+</body>
+</html>

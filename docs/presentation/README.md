@@ -19,6 +19,13 @@ marks it and starts its timer, and the timers announce their milestones (dead le
 window open/close, reservations expiring). Paste the `correlationId` printed by `make poison` and
 the previous orders revision into the two fields and the E-05 and rollback commands fill in.
 
+**Second order** ([index2.html](index2.html) + [presenter2.html](presenter2.html)): the same slides
+reordered for the final talk (problem, C&C, deployment, purchase, concurrency, verdict, then the
+thesis "why a cloud-native system" as the closing argument), with "Por qué" strips on the decision
+slides, and without the E-01, E-05 and blue/green demos. The pair syncs on its own channel, so it
+never drives the original. [decision-map.md](decision-map.md) maps every decision with its reasons
+and rejected alternatives (Spanish), and [scripts/](scripts/) holds the speakers' scripts.
+
 Open `presenter.html` in another window of the same browser: it follows the deck and its `←` `→`
 (or buttons) drive it. They talk through `BroadcastChannel`, so no server is needed.
 
