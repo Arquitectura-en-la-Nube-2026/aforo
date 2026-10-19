@@ -1,6 +1,6 @@
 # Guion · Apertura (Luis Esteban)
 
-**Defensa Entrega 4 · minuto 0–1 · slides 1–3** · ~155 palabras ≈ 60 s
+**Defensa Entrega 4 · minuto 0–1 · slides 1–3** · ~160 palabras ≈ 1 min (a buen ritmo)
 
 > **[clic]** = Julián avanza el deck.
 
