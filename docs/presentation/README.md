@@ -11,6 +11,14 @@ like the rest of the repo. Open both from the repo checkout: they load the logo 
 | [index.html](index.html) | The shared screen | A 16:9 slide deck (25 slides) in the logo's palette. No clock or timings on it |
 | [presenter.html](presenter.html) | The presenter's laptop | Current and next slide, speaker notes, the 20-minute clock with section budgets, the operator's timed command list with timers for the slow demos, and the honest answers to the hard questions |
 
+The console's operator panel follows the slide on screen, not the clock: each live command has a
+slide where it is prepared and a slide where it is due. Due commands show as gold "Ahora" cards
+with copy buttons (red when the deck has moved two slides past them), the next one as a blue
+"Prepárate" card, and each new one raises a banner with a beep (toggle 🔔). "Hecho" (or `H`)
+marks it and starts its timer, and the timers announce their milestones (dead letters, alert,
+window open/close, reservations expiring). Paste the `correlationId` printed by `make poison` and
+the previous orders revision into the two fields and the E-05 and rollback commands fill in.
+
 Open `presenter.html` in another window of the same browser: it follows the deck and its `←` `→`
 (or buttons) drive it. They talk through `BroadcastChannel`, so no server is needed.
 
@@ -31,9 +39,26 @@ deployment views, infrastructure included, with proof that the system is cloud-n
 | 17–19 | Nativo de la nube | What the running system shows, what it does not, verdict |
 | 19–20 | Cierre | Questions |
 
+## Speakers
+
+Shown on the console with a hand-off cue on each speaker's last slide. Julián also operates the
+terminal and the console for the whole talk.
+
+| Min | Block | Slides | Speaker |
+| --: | ----- | ------ | ------- |
+| 0–1 | Opening | 1–3 | Luis Esteban |
+| 1–6 | Live purchase demo | 4–6 | Sergio |
+| 6–8:30 | C&C: view, purchase, styles | 7–10 | Julián |
+| 8:30–11 | Patterns, design vs. built, E-02 | 11–13 | Daniel Felipe |
+| 11–14:30 | Deployment, persistence, IaC, blue/green | 14–18 | Juan José |
+| 14:30–17 | FaaS, E-01, E-05 | 19–21 | Cristian |
+| 17–19 | Cloud-native verdict | 22–24 | Daniel Felipe |
+| 19–20 | Questions (moderates) | 25 | Juan José |
+
 The demo timing is a shortened version of [../runbooks/demo.md](../runbooks/demo.md): `make
-poison` at 0:00, the E-01 script at **6:00** (opens 3 min later, closes 5 min after that, so the
-queue is at minimum 1 when the deployment section starts and drops to 0 around minute 14). E-06 and
+poison` at ≈ 6:00, right after the live demo (so its alert, ≈ 3:30 later, never lands during it), the E-01 script at **≈ 9:00** during the patterns slide (opens 3 min later, closes
+5 min after that, so the queue is still at minimum 1 when Cristian reaches E-01 around 15:30 and
+drops to 0 around minute 17). E-06 and
 the fails-well checks are shown from their recorded numbers only.
 
 ## Refreshing the purchase screenshots

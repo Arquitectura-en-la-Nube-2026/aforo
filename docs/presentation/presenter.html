@@ -55,6 +55,16 @@ button:focus-visible,summary:focus-visible{outline:2px solid var(--gold);outline
 .notes .say{color:var(--muted);font-size:18px;margin-top:10px}
 .nextup{margin-top:18px;padding-top:14px;border-top:1px dashed var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px}
 .nextup span{font-size:20px}
+.nextup.handoff{border-top:2px solid var(--gold)}
+.nextup.handoff #nextTitle b{color:var(--gold)}
+.speaker{display:inline-flex;align-items:center;gap:10px;margin-top:14px;background:var(--gold);color:var(--navy);border-radius:999px;padding:6px 16px 6px 8px;font:700 22px var(--display)}
+.speaker i{font:600 12px var(--mono);letter-spacing:.12em;text-transform:uppercase;background:var(--navy);color:var(--gold);border-radius:999px;padding:4px 10px;font-style:normal}
+.lineup{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.lineup li{display:grid;gap:2px;border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:15px;background:var(--panel2);min-width:0}
+.lineup li b{font-weight:700}
+.lineup li span{color:var(--muted);font:500 12px/1.35 var(--mono)}
+.lineup li.cur{border-color:var(--gold);background:var(--royal)}
+.lineup li.cur span{color:#fff}
 .ctrl{display:flex;gap:10px}
 .conn{font:500 13px var(--mono);color:var(--muted)}
 .conn.ok{color:var(--good)}
@@ -68,13 +78,38 @@ button:focus-visible,summary:focus-visible{outline:2px solid var(--gold);outline
 .timer ul{margin:6px 0 8px;padding-left:16px;font-size:13px;color:var(--muted)}
 .timer li.done{color:var(--good)}
 .timer li.next{color:var(--text);font-weight:600}
-ol.run{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:8px}
-ol.run li{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--panel2)}
-ol.run li.due{border-color:var(--gold);box-shadow:0 0 0 2px rgba(253,210,7,.25)}
-ol.run li.past{opacity:.5}
-ol.run .t{font:600 14px var(--mono);color:var(--gold);margin-right:8px}
-ol.run p{margin:4px 0;font-size:15px}
-ol.run .note{color:var(--muted);font-size:14px}
+/* operator guide */
+.oppanel{align-self:start;position:sticky;top:16px;max-height:calc(100vh - 32px);overflow:auto}
+@media (max-width:1100px){.oppanel{position:static;max-height:none}}
+.opnow{margin-top:14px;display:grid;gap:10px}
+.opcard{border-radius:14px;padding:14px 16px;border:2px solid var(--line);background:var(--panel2)}
+.opcard .tag{font:700 12px var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.opcard h3{margin:4px 0 6px;font:700 22px/1.2 var(--display)}
+.opcard p{margin:4px 0;font-size:15px}
+.opcard .when{color:var(--muted);font-size:14px}
+.opcard.now{border-color:var(--gold);background:#1d2a12;box-shadow:0 0 0 4px rgba(253,210,7,.18);animation:pulse 1.6s ease-in-out infinite}
+.opcard.now .tag{color:var(--gold)}
+.opcard.late{border-color:var(--bad);background:#2a1418;animation:none}
+.opcard.late .tag{color:var(--bad)}
+.opcard.prep{border-color:var(--azure)}
+.opcard.prep .tag{color:var(--azure)}
+.opcard.idle .tag{color:var(--muted)}
+.opcard .acts{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+@keyframes pulse{50%{box-shadow:0 0 0 8px rgba(253,210,7,.06)}}
+.vars{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;margin-top:12px;font-size:14px;color:var(--muted)}
+.vars input{background:var(--night);border:1px solid var(--line);border-radius:8px;color:var(--text);font:13px var(--mono);padding:6px 8px;min-width:0}
+.vars input:focus{outline:2px solid var(--gold)}
+ol.run{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:6px}
+ol.run li{display:grid;grid-template-columns:22px 1fr auto;gap:8px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:7px 10px;background:var(--panel2);font-size:14px}
+ol.run li .st{width:14px;height:14px;border-radius:50%;border:2px solid var(--muted)}
+ol.run li small{color:var(--muted);font:500 12px var(--mono);white-space:nowrap}
+ol.run li.prep .st{border-color:var(--azure)}
+ol.run li.now{border-color:var(--gold)} ol.run li.now .st{background:var(--gold);border-color:var(--gold)}
+ol.run li.late{border-color:var(--bad)} ol.run li.late .st{background:var(--bad);border-color:var(--bad)}
+ol.run li.done{opacity:.45} ol.run li.done .st{background:var(--good);border-color:var(--good)}
+.banner{position:fixed;left:50%;top:14px;transform:translate(-50%,-140%);z-index:50;max-width:min(760px,92vw);background:var(--gold);color:var(--navy);border-radius:14px;padding:12px 18px;font:700 18px/1.3 var(--display);box-shadow:0 14px 40px rgba(0,0,0,.45);transition:transform .3s;cursor:pointer}
+.banner.info{background:var(--azure);color:#fff}
+.banner.show{transform:translate(-50%,0)}
 pre.cmd{position:relative;margin:8px 0 2px;padding:9px 70px 9px 12px;background:var(--night);border:1px solid var(--line);border-radius:10px;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
 pre.cmd button{position:absolute;top:6px;right:6px;font:600 12px var(--display);background:var(--panel2);border:1px solid var(--line);border-radius:7px;padding:2px 8px}
 
@@ -87,6 +122,7 @@ details.qa p{margin:8px 0 0;color:#d6defc;font-size:16px}
 </style>
 </head>
 <body>
+<div class="banner" id="banner" role="status" aria-live="assertive" hidden></div>
 <div class="wrap">
   <div style="display:grid;gap:16px;align-content:start">
     <section class="panel">
@@ -98,14 +134,15 @@ details.qa p{margin:8px 0 0;color:#d6defc;font-size:16px}
         </div>
       </div>
       <div class="bar" id="bar"></div>
+      <ol class="lineup" id="lineup"></ol>
     </section>
 
     <section class="panel">
       <div style="display:flex;justify-content:space-between;align-items:center"><span class="lbl">En pantalla</span><span class="conn" id="conn">esperando la presentación…</span></div>
-      <div class="cur-head"><div><span class="lbl" id="curSec"></span><h1 id="curTitle">Abra index.html en la otra pantalla</h1></div><span class="n" id="curN"></span></div>
+      <div class="cur-head"><div><span class="lbl" id="curSec"></span><h1 id="curTitle">Abra index.html en la otra pantalla</h1><span class="speaker" id="speaker" hidden><i>Habla</i><span id="speakerName"></span></span></div><span class="n" id="curN"></span></div>
       <div class="builds" id="builds"></div>
       <div class="notes" id="notes"></div>
-      <div class="nextup"><span><span class="lbl">Sigue</span>&nbsp; <span id="nextTitle">—</span></span>
+      <div class="nextup" id="nextup"><span><span class="lbl">Sigue</span>&nbsp; <span id="nextTitle">—</span></span>
         <div class="ctrl"><button class="btn big" id="prev" aria-label="Anterior">‹</button><button class="btn big gold" id="next" aria-label="Siguiente">›</button></div></div>
       <p class="keys"><span class="kbd">←</span> <span class="kbd">→</span> mueven la presentación desde aquí · <span class="kbd">T</span> reloj</p>
     </section>
@@ -116,9 +153,14 @@ details.qa p{margin:8px 0 0;color:#d6defc;font-size:16px}
     </section>
   </div>
 
-  <section class="panel" style="align-self:start">
-    <span class="lbl">Operador · demos en vivo</span>
-    <p style="margin:8px 0 0;color:var(--muted);font-size:14px">Antes: <code>make up</code> y <code>make redis-up</code> (≥ 15 min), <code>make status</code> con <code>mock_fault_mode=none</code>, fila calentada con un ingreso. Pestañas: la web, Logs Explorer, Monitoring → Alerting, Cloud Run (gateway, queue), terminal.</p>
+  <section class="panel oppanel">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span class="lbl">Operador · Julián · demos en vivo</span><button class="btn" id="soundBtn" aria-pressed="true">🔔 sonido</button></div>
+    <p style="margin:8px 0 0;color:var(--muted);font-size:14px">Antes: <code>make up</code> y <code>make redis-up</code> (≥ 15 min), <code>make status</code> con <code>mock_fault_mode=none</code>, fila calentada con un ingreso, <b>«No molestar» activado en el equipo que comparte pantalla</b> (el correo de la alerta llega a mitad de la charla). Pestañas: la web, Logs Explorer, Monitoring → Alerting, Cloud Run (gateway, queue), dos terminales.</p>
+    <div class="opnow" id="opnow"></div>
+    <div class="vars">
+      <label for="vPoison">correlationId de make poison</label><input id="vPoison" placeholder="se pega al enviar E-05" autocomplete="off" spellcheck="false">
+      <label for="vRev">revisión anterior de orders</label><input id="vRev" placeholder="aforo-orders-000NN-xxx" autocomplete="off" spellcheck="false">
+    </div>
     <div class="timers" id="timers"></div>
     <ol class="run" id="run"></ol>
   </section>
@@ -150,7 +192,20 @@ function toggle() {
   tick();
 }
 $("#clockBtn").addEventListener("click", toggle);
-$("#clockReset").addEventListener("click", () => { start = null; acc = 0; $("#clockBtn").textContent = "Iniciar"; tick(); });
+// Resets everything for a fresh run: clock, operator timers, and the deck back to the title slide.
+$("#clockReset").addEventListener("click", () => {
+  if (!confirm("¿Reiniciar el reloj y los temporizadores, y volver la presentación a la portada?")) return;
+  start = null; acc = 0; $("#clockBtn").textContent = "Iniciar";
+  Object.keys(tStart).forEach((k) => delete tStart[k]);
+  $$(".timer").forEach((box) => {
+    $("output", box).textContent = "—";
+    $("[data-timer]", box).textContent = "Marcar inicio";
+    $$("li", box).forEach((li) => li.classList.remove("done", "next"));
+  });
+  resetOps();
+  send({ type: "go", cur: 0, build: 0 });
+  tick();
+});
 function tick() {
   const ms = elapsed(), min = ms / 60000;
   $("#elapsed").textContent = fmt(ms);
@@ -162,28 +217,37 @@ function tick() {
   else $("#clock").classList.remove("late");
   if (ms > 20 * 60000) state = `${fmt(ms - 20 * 60000)} sobre los 20 min`;
   $("#state").textContent = state;
-  $$("ol.run li[data-at]").forEach((li) => {
-    const at = Number(li.dataset.at) * 60000;
-    li.classList.toggle("due", ms > 0 && ms >= at - 30000 && ms < at + 90000);
-    li.classList.toggle("past", ms >= at + 90000);
-  });
   renderTimers();
 }
 setInterval(tick, 1000);
 
+/* ───────── who speaks each block ───────── */
+const BLOCKS = [
+  ["Luis Esteban", "Apertura", "0–1′", ["portada", "problema", "corte"]],
+  ["Sergio", "Demo de compra", "1–6′", ["sec-a", "compra", "traza"]],
+  ["Julián", "C&C · vista y estilos", "6–8:30′", ["sec-b", "cc-vista", "cc-compra", "cc-estilos"]],
+  ["Daniel Felipe", "Patrones y E-02", "8:30–11′", ["cc-patrones", "cc-propuesto", "e02"]],
+  ["Juan José", "Despliegue e IaC", "11–14:30′", ["sec-c", "gcp", "datos", "iac", "pipeline"]],
+  ["Cristian", "FaaS, E-01, E-05", "14:30–17′", ["faas", "e01", "e05"]],
+  ["Daniel Felipe", "Nativo de la nube", "17–19′", ["nativo-si", "nativo-no", "veredicto"]],
+  ["Juan José", "Preguntas (modera)", "19–20′", ["gracias"]],
+];
+const blockOf = (id) => BLOCKS.findIndex((b) => b[3].includes(id));
+$("#lineup").innerHTML = BLOCKS.map(([who, what, when], i) => `<li data-block="${i}"><b>${esc(who)}</b><span>${esc(when)} · ${esc(what)}</span></li>`).join("");
+
 /* ───────── speaker notes, by slide id ───────── */
 const NOTES = {
-  portada: ["Presentarse: Equipo F, Aforo.", "Una frase: construimos y desplegamos el camino de compra del diseño de las entregas 1 a 3.", "<b>Operador:</b> make poison ya."],
+  portada: ["Presentarse: Equipo F, Aforo.", "Una frase: construimos y desplegamos el camino de compra del diseño de las entregas 1 a 3."],
   problema: ["Tres presiones del dominio, que vienen de los escenarios de calidad de la Entrega 3.", "Picos de 3.000 compradores en 60 s; cero sobreventa; costo en reposo bajo.", "Todo lo que sigue responde a una de estas tres."],
   corte: ["Construimos el camino de compra completo, no todo el diseño.", "Fuera: emisión, notificaciones, identidad gestionada, Edge/WAF y verificación del pase. Decirlo antes de que lo pregunten."],
   "sec-a": ["Pasamos a la demo en vivo: cambiar a la pestaña de la web.", "URL: aforo-web-68220265740.southamerica-east1.run.app, correo nuevo."],
   compra: ["<b>Solo si el vivo falla</b>, o para repasar. Cada clic avanza un paso.", "Paso 4: el pase dura 10 min. Paso 6: la disponibilidad bajó en dos. Paso 8: PAID en menos de 5 s."],
   traza: ["Mismo correlationId en gateway, orders, inventory.", "El queue_pass_received se registra pero no se verifica (D-07): decirlo.", "Siguiente clic: el pago sale por el outbox como OrderPaid."],
-  "sec-b": ["Ahora la arquitectura: primero componentes y conectores.", "<b>Operador:</b> lanzar E-01 en este momento (e01.cjs)."],
+  "sec-b": ["Ahora la arquitectura: primero componentes y conectores.", "<b>Operador:</b> make poison ahora, antes de empezar a hablar."],
   "cc-vista": ["Cinco servicios en Cloud Run, cada uno con su almacén.", "Arriba la entrada (Web, Gateway), al centro la lógica, abajo la mensajería y las dos funciones.", "Las bandas de color son los tres paradigmas de persistencia."],
   "cc-compra": ["La misma compra que acabamos de hacer, salto por salto.", "Énfasis: reserva (transacción en Inventory) y webhook (firma + inbox)."],
   "cc-estilos": ["Microservicios: un desplegable por capacidad.", "Eventos: síncrono cuando el actor espera, asíncrono cuando el consumidor puede ponerse al día."],
-  "cc-patrones": ["Un patrón por clic; cada uno vive en una caja concreta.", "Si hay poco tiempo: API Gateway, Saga, Outbox, Breaker y saltar."],
+  "cc-patrones": ["Un patrón por clic; cada uno vive en una caja concreta.", "Si hay poco tiempo: API Gateway, Saga, Outbox, Breaker y saltar.", "<b>Operador:</b> lanzar E-01 ahora (e01.cjs), para que la ventana siga abierta cuando Cristian llegue a E-01."],
   "cc-propuesto": ["Lo punteado está en el diseño y no en el corte.", "La desviación más grande: el pase no se verifica al reservar."],
   e02: ["<b>Operador:</b> correr E-02 ahora (200 compradores).", "Exactamente 10 creadas, 190 SOLD_OUT, 0 sobreventa.", "Honestidad: p95 808 ms en ráfaga no cumple; 75 ms dosificado. Por eso existe la sala de espera."],
   "sec-c": ["Segunda parte de la arquitectura: despliegue e infraestructura."],
@@ -192,8 +256,8 @@ const NOTES = {
   iac: ["Terraform: configuración. CI: código y tráfico. prewarmer: los mínimos.", "Así no se pisan entre ellos (ADR-0004)."],
   pipeline: ["Artefacto inmutable: imagen por commit, despliegue por digest.", "Revisión sin tráfico, smoke test, promoción.", "<b>Operador:</b> rollback en vivo de orders (clic para mostrar 8,3 s)."],
   faas: ["Las dos funciones realizan tácticas del diseño: precalentar (E-01) y alertar (E-05).", "El mock de pagos también es función, pero es un doble de prueba: no cuenta."],
-  e01: ["<b>Operador:</b> mostrar minScale de aforo-queue = 1 y los logs prewarm_applied.", "Si ya pasó el cierre, mostrar el 1 → 0 en los logs."],
-  e05: ["<b>Operador:</b> logs del correlationId de make poison y el incidente en Monitoring → Alerting.", "Dead letters ≈ 1:36, alerta ≈ 3:30, meta 5 min."],
+  e01: ["<b>Cristian → Julián:</b> «Julián, ¿nos muestras la sala de espera ahora?» Julián muestra minScale de aforo-queue = 1 y las líneas prewarm_scheduled y prewarm_applied WARM.", "Decir: ese evento se publicó hace unos 6 minutos; el prewarmer subió Gateway y Queue a 1 en segundos y los devolverá a 0 solo, al cierre de la ventana.", "Grabado: primer ingreso 550 ms precalentado vs 4 070 ms en frío."],
+  e05: ["<b>Cristian → Julián:</b> «¿Y el mensaje del inicio?» Julián muestra los 400 de los tres consumidores, las tres líneas dead_letter de dlq-monitor y el incidente en Monitoring → Alerting (y el correo).", "El mensaje se envió justo después de la demo de compra.", "Si los tiempos del vivo difieren de 1:36 y 3:30, decir los del vivo: la meta es 5 min."],
   "nativo-si": ["Lo que el sistema en ejecución demuestra.", "No leer todo: elegir 3 (inmutable, IaC, sin estado)."],
   "nativo-no": ["Lo que falta, sin rodeos.", "Alta disponibilidad: no. Costo: falta la cifra de facturación."],
   veredicto: ["Leer el veredicto completo.", "Pausa."],
@@ -218,13 +282,21 @@ function onState(s) {
   $("#builds").innerHTML = m.builds ? Array.from({ length: m.builds + 1 }, (_, i) => `<i class="${i <= s.build ? "on" : ""}"></i>`).join("") : "";
   const notes = NOTES[m.id] || [];
   $("#notes").innerHTML = notes.length ? `<ul>${notes.map((n) => `<li>${n}</li>`).join("")}</ul>` : "";
-  $("#nextTitle").textContent = m.builds && s.build < m.builds ? `${m.title} (clic ${s.build + 2} de ${m.builds + 1})` : nx ? nx.title : "fin";
+  const bi = blockOf(m.id), lastClick = !m.builds || s.build >= m.builds;
+  $("#speaker").hidden = bi < 0;
+  if (bi >= 0) $("#speakerName").textContent = BLOCKS[bi][0];
+  $$("#lineup li").forEach((li) => li.classList.toggle("cur", Number(li.dataset.block) === bi));
+  const nbi = nx ? blockOf(nx.id) : -1, handoff = lastClick && nx && nbi !== bi && nbi >= 0;
+  $("#nextup").classList.toggle("handoff", !!handoff);
+  $("#nextTitle").innerHTML = !lastClick ? esc(`${m.title} (clic ${s.build + 2} de ${m.builds + 1})`)
+    : !nx ? "fin"
+    : handoff ? `<b>Pasa a ${esc(BLOCKS[nbi][0])}</b> · ${esc(nx.title)}`
+    : esc(nx.title);
+  renderOps();
   tick();
 }
 if (chan) chan.onmessage = (e) => onState(e.data);
 addEventListener("storage", (e) => { if (e.key === "aforo-deck-state" && e.newValue) { try { onState(JSON.parse(e.newValue)); } catch (_) {} } });
-try { const last = localStorage.getItem("aforo-deck-state"); if (last) onState(JSON.parse(last)); } catch (_) {}
-send({ type: "hello" });
 $("#next").addEventListener("click", () => send({ type: "next" }));
 $("#prev").addEventListener("click", () => send({ type: "prev" }));
 document.addEventListener("keydown", (e) => {
@@ -237,12 +309,14 @@ document.addEventListener("keydown", (e) => {
 /* ───────── operator ───────── */
 const TIMERS = [
   { id: "poison", t: "E-05 · make poison", m: [[96, "dead letters (≈ 1:36)"], [210, "incidente y correo (≈ 3:30)"]] },
-  { id: "e01", t: "E-01 · evento publicado", m: [[5, "mínimo 1 en gateway y queue"], [180, "abre la venta"], [480, "cierre: vuelve a 0"]] },
+  { id: "e01", t: "E-01 · evento publicado", m: [[5, "mínimo 1 en gateway y queue"], [180, "abre la venta"], [480, "cierre: vuelve a 0 (≈ minuto 17)"]] },
   { id: "e02", t: "E-02 · 200 compradores", m: [[480, "vencen las 10 reservas"]] },
 ];
 const tStart = {};
 $("#timers").innerHTML = TIMERS.map((x) => `<div class="timer" id="tm-${x.id}"><b>${x.t}</b><output>—</output><ul>${x.m.map(([s, l]) => `<li>${fmt(s * 1000)} · ${l}</li>`).join("")}</ul><button class="btn" data-timer="${x.id}">Marcar inicio</button></div>`).join("");
-$$("[data-timer]").forEach((b) => b.addEventListener("click", () => { tStart[b.dataset.timer] = Date.now(); b.textContent = "Reiniciar"; renderTimers(); }));
+const startTimer = (id) => { tStart[id] = Date.now(); const b = $(`[data-timer="${id}"]`); if (b) b.textContent = "Reiniciar"; renderTimers(); };
+$$("[data-timer]").forEach((b) => b.addEventListener("click", () => startTimer(b.dataset.timer)));
+const fired = new Set(); // timer milestones already announced
 function renderTimers() {
   TIMERS.forEach((x) => {
     const box = $("#tm-" + x.id), st = tStart[x.id];
@@ -250,23 +324,121 @@ function renderTimers() {
     const s = (Date.now() - st) / 1000;
     $("output", box).textContent = fmt(s * 1000);
     let marked = false;
-    $$("li", box).forEach((li, i) => { const done = s >= x.m[i][0]; li.classList.toggle("done", done); li.classList.toggle("next", !done && !marked); if (!done) marked = true; });
+    $$("li", box).forEach((li, i) => {
+      const done = s >= x.m[i][0], key = `${x.id}:${i}:${st}`;
+      li.classList.toggle("done", done); li.classList.toggle("next", !done && !marked); if (!done) marked = true;
+      if (done && !fired.has(key)) { fired.add(key); if (s - x.m[i][0] < 5) notify(`${x.t}: ${x.m[i][1]}`, "info"); }
+    });
   });
 }
-const RUN = [
-  [0, "0:00", "E-05 · enviar el mensaje envenenado; marcar su temporizador y anotar el correlationId.", "make poison TOPIC=aforo.catalog.event-published"],
-  [1, "1:00", "Demo: el presentador compra en la web con un correo nuevo. Al pagar, copiar el id de la orden de la URL."],
-  [5, "5:00", "Paso 10 en Logs Explorer (editor de consultas). Clic en un correlationId → «Show matching entries».", "resource.labels.service_name=(\"aforo-gateway\" OR \"aforo-orders\" OR \"aforo-inventory\")\nhttpRequest.requestUrl=~\"orders|reservations\"\ntimestamp>=\"<un minuto antes de la compra, UTC>\""],
-  [6, "6:00", "E-01 · publicar el evento de demo (abre en 3 min, cierra en 8); marcar su temporizador.", "node docs/evidence/e01-prewarming/e01.cjs", "Así el mínimo está en 1 al llegar a despliegue y baja a 0 cerca del minuto 14."],
-  [10, "≈ 10:00", "E-02 · en la diapositiva «200 compradores»; marcar su temporizador.", "node docs/evidence/e02-concurrency/e02-gateway.cjs 200", "Esperado: answers {\"201\":10,\"409 SOLD_OUT\":190} y oversold=0."],
-  [13, "≈ 13:00", "Blue/green · rollback en vivo de orders y vuelta a la última.", "gcloud run revisions list --service aforo-orders --region southamerica-east1\ngcloud run services update-traffic aforo-orders --region southamerica-east1 --to-revisions <anterior>=100\ngcloud run services update-traffic aforo-orders --region southamerica-east1 --to-latest"],
-  [14.5, "≈ 14:30", "E-01 · mínimo de queue y logs del prewarmer.", "gcloud run services describe aforo-queue --region southamerica-east1 --format='value(metadata.annotations.\"run.googleapis.com/minScale\")'", "Logs: jsonPayload.event=(\"prewarm_scheduled\" OR \"prewarm_applied\")"],
-  [15.5, "≈ 15:30", "E-05 · dead letters y el incidente en Monitoring → Alerting.", "jsonPayload.correlationId=\"<el de make poison>\""],
-  [18, "≈ 18:00", "Si da el tiempo: los cupos de E-02 volvieron a 10 y las órdenes están EXPIRED.", "resource.labels.service_name=\"aforo-inventory\"\nhttpRequest.requestUrl=~\"/expire\""],
-  [21, "Después", "Apagar el ambiente.", "make down"],
+/* Operator guide, driven by the slide on screen: each action is prepared on one slide and run on another.
+   ${poison} and ${rev} come from the two inputs; ${since} is filled when the action becomes due. */
+const ACTIONS = [
+  { id: "trace", prep: "corte", run: "sec-a", t: "Paso 10 · seguir la compra en Logs Explorer", when: "≈ 5:00, cuando Sergio vea «Pago confirmado»",
+    p: "Abre Logs Explorer en el editor de consultas.",
+    c: ['resource.labels.service_name=("aforo-gateway" OR "aforo-orders" OR "aforo-inventory")\njsonPayload.route=~"orders|reservations"\ntimestamp>="${since}"'], after: "Clic en un correlationId → «Show matching entries»." },
+  { id: "poison", prep: "traza", run: "sec-b", t: "E-05 · enviar el mensaje envenenado", when: "≈ 6:00, al terminar la demo de Sergio",
+    p: "Ten la terminal lista: se envía al abrir tu bloque de C&C.",
+    c: ["make poison TOPIC=aforo.catalog.event-published"], after: "Pega abajo el correlationId que imprime. «Hecho» inicia su temporizador. El correo de la alerta llegará en ≈ 3:30, a mitad de la charla: «No molestar» activado.", timer: "poison" },
+  { id: "e01", prep: "cc-estilos", run: "cc-patrones", t: "E-01 · publicar el evento de demo", when: "≈ 9:00, en «Dónde vive cada patrón»",
+    p: "Abre una segunda terminal: el script queda corriendo ~4 min.",
+    c: ["node docs/evidence/e01-prewarming/e01.cjs"], after: "Abre en 3 min y cierra en 8. «Hecho» inicia su temporizador.", timer: "e01" },
+  { id: "e02", prep: "cc-propuesto", run: "e02", t: "E-02 · 200 compradores sobre 10 localidades", when: "≈ 10:00, en «200 compradores»",
+    c: ["node docs/evidence/e02-concurrency/e02-gateway.cjs 200"], after: 'Esperado: answers {"201":10,"409 SOLD_OUT":190} y oversold=0.', timer: "e02" },
+  { id: "rollback", prep: "iac", run: "pipeline", t: "Blue/green · rollback en vivo de orders", when: "≈ 13:00, en «Blue/green»",
+    p: "Lista las revisiones y pega abajo la anterior a la actual.",
+    pc: ["gcloud run revisions list --service aforo-orders --region southamerica-east1 --limit 3"],
+    c: ["gcloud run services update-traffic aforo-orders --region southamerica-east1 --to-revisions ${rev}=100", "gcloud run services update-traffic aforo-orders --region southamerica-east1 --to-latest"],
+    after: "Primero al 100 % en la anterior; luego de vuelta a la última." },
+  { id: "e01show", prep: "faas", run: "e01", t: "E-01 · mínimo de queue y logs del prewarmer", when: "≈ 15:30, cuando Cristian lo pida",
+    p: "Deja lista la consulta del prewarmer en Logs Explorer.",
+    c: ["gcloud run services describe aforo-queue --region southamerica-east1 --format='value(metadata.annotations.\"run.googleapis.com/minScale\")'", 'jsonPayload.event=("prewarm_scheduled" OR "prewarm_applied")'],
+    after: "Esperado: 1 (vacío = 0) y la línea prewarm_applied WARM." },
+  { id: "e05show", prep: "e01", run: "e05", t: "E-05 · dead letters y el incidente", when: "≈ 16:30, cuando Cristian lo pida",
+    p: "Abre Monitoring → Alerting en otra pestaña.",
+    c: ['jsonPayload.correlationId="${poison}"'], after: "Los 400 de los tres consumidores, tres líneas dead_letter y el incidente abierto (y el correo)." },
+  { id: "expiry", prep: "nativo-si", run: "nativo-no", optional: true, t: "Opcional · las reservas de E-02 vencieron", when: "≈ 18:00, si da el tiempo",
+    c: ['resource.labels.service_name="aforo-inventory"\njsonPayload.route=~"/expire"'], after: "Cupos de vuelta a 10 y órdenes EXPIRED." },
+  { id: "down", prep: "veredicto", run: "gracias", t: "Apagar el ambiente", when: "al terminar las preguntas",
+    c: ["make down"], after: "No dejar dev encendido." },
 ];
-$("#run").innerHTML = RUN.map(([at, t, p, c, n]) => `<li data-at="${at}"><span class="t">${t}</span>${esc(p)}${c ? cmd(c) : ""}${n ? `<p class="note">${esc(n)}</p>` : ""}</li>`).join("")
-  + `<li><span class="t">Si algo falla</span>Mostrar la corrida guardada en <code>docs/evidence/&lt;escenario&gt;/</code>, decirlo y seguir.</li>`;
+const vars = { poison: "", rev: "", since: "" };
+const opDone = new Set(), opAnnounced = new Set(), sinceOf = {};
+const fill = (t, a) => t.replace(/\$\{(\w+)\}/g, (_, k) => (k === "since" ? sinceOf[a.id] || "<un minuto antes de la compra, UTC>" : vars[k] || `<${k === "poison" ? "correlationId de make poison" : "revisión anterior"}>`));
+const idx = (id) => (deck && id ? deck.slides.findIndex((x) => x.id === id) : -1);
+function opState(a) {
+  if (opDone.has(a.id)) return "done";
+  if (!deck) return "idle";
+  const c = deck.cur, r = idx(a.run), p = a.prep ? idx(a.prep) : r;
+  if (c > r + 1 && !a.optional) return "late";
+  if (c >= r) return "now";
+  if (c >= p) return "prep";
+  return "idle";
+}
+function card(a, st) {
+  const label = { now: "Ahora", late: "Atrasado · hazlo ya", prep: "Prepárate", idle: "Siguiente", done: "Hecho" }[st];
+  const pre = st === "prep" ? `${a.p ? `<p>${esc(a.p)}</p>` : ""}${(a.pc || []).map((x) => cmd(fill(x, a))).join("")}<p class="when">Al llegar: ${(a.c || []).map((x) => `<code>${esc(fill(x, a).split("\n")[0].slice(0, 70))}</code>`).join(" · ")}</p>` : "";
+  const body = st === "now" || st === "late" ? `${(a.pc || []).length && !vars.rev && a.id === "rollback" ? (a.pc || []).map((x) => cmd(fill(x, a))).join("") : ""}${(a.c || []).map((x) => cmd(fill(x, a))).join("")}${a.after ? `<p>${esc(a.after)}</p>` : ""}` : "";
+  return `<div class="opcard ${st}"><span class="tag">${label}</span><h3>${esc(a.t)}</h3><p class="when">${esc(a.when)}</p>${pre}${body}
+    ${st === "now" || st === "late" ? `<div class="acts"><button class="btn gold" data-done="${a.id}">Hecho${a.timer ? " · inicia temporizador" : ""}</button><span class="when" style="align-self:center">tecla H</span></div>` : ""}</div>`;
+}
+let lastOpHtml = "";
+function renderOps() {
+  const states = ACTIONS.map((a) => [a, opState(a)]);
+  states.forEach(([a, st]) => {
+    if ((st === "now" || st === "late") && !opAnnounced.has(a.id)) {
+      opAnnounced.add(a.id);
+      if (!sinceOf[a.id]) sinceOf[a.id] = new Date(Date.now() - 3 * 60000).toISOString().replace(/\.\d+Z$/, "Z");
+      notify(`Ahora: ${a.t}`);
+    }
+  });
+  const due = states.filter(([, st]) => st === "now" || st === "late"); // every due action, oldest first
+  const prep = states.find(([, st]) => st === "prep") || states.find(([, st]) => st === "idle");
+  const html = due.map(([a, st]) => card(a, st)).join("") + (prep ? card(prep[0], prep[1]) : "") + (!due.length && !prep ? `<div class="opcard idle"><span class="tag">Listo</span><h3>Nada pendiente</h3></div>` : "");
+  if (html !== lastOpHtml) { $("#opnow").innerHTML = html; lastOpHtml = html; }
+  $("#run").innerHTML = states.map(([a, st]) => `<li class="${st}"><span class="st"></span><span>${esc(a.t)}</span><small>${esc(a.when.split(",")[0])}</small></li>`).join("");
+}
+function markDone(id) {
+  const a = ACTIONS.find((x) => x.id === id);
+  if (!a) return;
+  opDone.add(id);
+  if (a.timer && !tStart[a.timer]) startTimer(a.timer);
+  renderOps();
+}
+document.addEventListener("click", (e) => { const b = e.target.closest("[data-done]"); if (b) markDone(b.dataset.done); });
+document.addEventListener("keydown", (e) => {
+  if (e.target.closest("input") || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "h" || e.key === "H") { const b = $("#opnow [data-done]"); if (b) markDone(b.dataset.done); }
+});
+$("#vPoison").addEventListener("input", (e) => { vars.poison = e.target.value.trim(); lastOpHtml = ""; renderOps(); });
+$("#vRev").addEventListener("input", (e) => { vars.rev = e.target.value.trim(); lastOpHtml = ""; renderOps(); });
+function resetOps() {
+  opDone.clear(); opAnnounced.clear(); fired.clear();
+  Object.keys(sinceOf).forEach((k) => delete sinceOf[k]);
+  vars.poison = vars.rev = ""; $("#vPoison").value = ""; $("#vRev").value = "";
+  lastOpHtml = ""; renderOps();
+}
+
+/* banner + optional beep */
+let sound = true, bannerT;
+$("#soundBtn").addEventListener("click", (e) => { sound = !sound; e.currentTarget.setAttribute("aria-pressed", String(sound)); e.currentTarget.textContent = sound ? "🔔 sonido" : "🔕 sin sonido"; });
+function beep() {
+  if (!sound) return;
+  try {
+    const ctx = beep.ctx || (beep.ctx = new (window.AudioContext || window.webkitAudioContext)());
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = 880; g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+    o.connect(g).connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.4);
+  } catch (_) {}
+}
+function notify(text, kind) {
+  const b = $("#banner");
+  b.textContent = text; b.className = `banner${kind === "info" ? " info" : ""}`; b.hidden = false;
+  requestAnimationFrame(() => b.classList.add("show"));
+  beep();
+  clearTimeout(bannerT); bannerT = setTimeout(() => b.classList.remove("show"), kind === "info" ? 7000 : 9000);
+}
+$("#banner").addEventListener("click", (e) => e.currentTarget.classList.remove("show"));
 
 /* ───────── Q&A ───────── */
 const QA = [
@@ -285,6 +457,11 @@ const QA = [
 ];
 $("#qa").innerHTML = QA.map(([q, a]) => `<details class="qa"><summary>${esc(q)}</summary><p>${esc(a)}</p></details>`).join("");
 
+
+/* start: render the guide, then pick up the deck's last known state and ask it for a fresh one */
+renderOps();
+try { const last = localStorage.getItem("aforo-deck-state"); if (last) onState(JSON.parse(last)); } catch (_) {}
+send({ type: "hello" });
 tick();
 })();
 </script>
