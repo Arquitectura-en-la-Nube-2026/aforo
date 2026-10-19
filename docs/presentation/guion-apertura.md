@@ -30,7 +30,7 @@ El problema: una venta masiva es **un pico, no un promedio**.
 
 **[clic]** Y en reposo, el sistema debe costar **quince dólares al mes o menos**.
 
-Todo lo que sigue responde a uno de estos tres.
+Todo lo que vamos a mostrar responde a estos tres problemas.
 
 **[clic → slide 3]**
 
