@@ -1,0 +1,15 @@
+{
+  "$schema": "../../node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "Quality P1, component C3. Run with `npm run test:p1:mutation --workspace=@aforo/queue`.",
+  "packageManager": "npm",
+  "testRunner": "vitest",
+  "vitest": { "configFile": "vitest.p1.config.mts" },
+  "plugins": ["@stryker-mutator/vitest-runner"],
+  "mutate": ["src/queue/queue-status.ts"],
+  "coverageAnalysis": "perTest",
+  "reporters": ["clear-text", "progress", "html", "json"],
+  "htmlReporter": { "fileName": "../../quality/reports/c3/mutation/index.html" },
+  "jsonReporter": { "fileName": "../../quality/reports/c3/mutation/mutation.json" },
+  "cleanTempDir": "always",
+  "thresholds": { "high": 80, "low": 60, "break": null }
+}
