@@ -59,7 +59,7 @@ describe('C6 PurchaseAction', () => {
     expect(screen.queryByRole('link')).toBeNull();
   });
 
-  it('TC-C6-02 OPEN + ready + session + no pass shows the join-queue link to /events/<id>/queue', () => {
+  it('TC-C6-02 OPEN + ready + session + no pass shows the join-queue link to /events/{id}/queue', () => {
     given({ session: SESSION, ready: true, pass: null });
 
     render(<PurchaseAction eventId={EVENT} saleState="OPEN" salesOpensAt={OPENS_AT} />);
@@ -68,7 +68,7 @@ describe('C6 PurchaseAction', () => {
     expect(link.getAttribute('href')).toBe(`/events/${EVENT}/queue`);
   });
 
-  it('TC-C6-03 saleState SCHEDULED shows the opening text with a <time> equal to salesOpensAt and no link', () => {
+  it('TC-C6-03 saleState SCHEDULED shows the opening text with a time element equal to salesOpensAt and no link', () => {
     given({ session: SESSION });
     const opensAt = '2026-12-01T15:00:00Z';
 
@@ -88,7 +88,7 @@ describe('C6 PurchaseAction', () => {
     expect(screen.queryByRole('link')).toBeNull();
   });
 
-  it('TC-C6-05 OPEN + ready + no session shows the login link to /login?next=%2Fevents%2F<id>', () => {
+  it('TC-C6-05 OPEN + ready + no session shows the login link to /login?next=%2Fevents%2F{id}', () => {
     given({ session: null, ready: true });
 
     render(<PurchaseAction eventId={EVENT} saleState="OPEN" salesOpensAt={OPENS_AT} />);
@@ -97,7 +97,7 @@ describe('C6 PurchaseAction', () => {
     expect(link.getAttribute('href')).toBe(`/login?next=%2Fevents%2F${EVENT}`);
   });
 
-  it('TC-C6-06 OPEN + session + live pass shows the continue-buying link to /events/<id>/buy', () => {
+  it('TC-C6-06 OPEN + session + live pass shows the continue-buying link to /events/{id}/buy', () => {
     given({ session: SESSION, ready: true, pass: PASS });
 
     render(<PurchaseAction eventId={EVENT} saleState="OPEN" salesOpensAt={OPENS_AT} />);
