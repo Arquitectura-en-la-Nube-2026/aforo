@@ -33,3 +33,7 @@ tfplan
 # Test artifacts
 playwright-report/
 test-results/
+
+# Quality P1 (component-level verification) reports and Stryker sandboxes
+quality/reports/
+.stryker-tmp*/

@@ -18,7 +18,9 @@
     "build:queue": "npm run build --workspace=@aforo/queue",
     "lint:contracts": "make lint-contracts",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test:p1": "bash quality/run-all.sh",
+    "test:p1:mutation": "npm run test:p1:mutation --workspace=@aforo/queue && npm run test:p1:mutation --workspace=@aforo/orders"
   },
   "devDependencies": {
     "prettier": "^3.3.0"
