@@ -31,6 +31,8 @@ SELECT qa.assert_raises('TC-C1-02', 'sector_availability rejects available = cap
   format($sql$INSERT INTO sector_availability (event_id, sector_id, name, capacity, available, price_cents)
               VALUES (%L, %L, 'Palco', 100, 101, 150000)$sql$, :event, :sector),
   '23514');
+SELECT qa.assert_equals('TC-C1-02', 'no sector_availability row was left for the rejected sector',
+  0::bigint, (SELECT count(*) FROM sector_availability WHERE event_id = :event AND sector_id = :sector));
 ROLLBACK TO SAVEPOINT tc;
 
 -- TC-C1-03 -----------------------------------------------------------------------------------
@@ -47,6 +49,13 @@ SELECT qa.assert_raises('TC-C1-03', 'the transition guard rejects CONFIRMED -> A
   'P0001');
 SELECT qa.assert_equals('TC-C1-03', 'the rejected reservation keeps status CONFIRMED',
   'CONFIRMED'::text, (SELECT status FROM reservation WHERE id = :resv));
+ROLLBACK TO SAVEPOINT tc;
+
+-- TC-C1-04 -----------------------------------------------------------------------------------
+SAVEPOINT tc;
+SELECT qa.assert_lives('TC-C1-04', 'sector_availability accepts available = 0 (lower bound, sold out)',
+  format($sql$INSERT INTO sector_availability (event_id, sector_id, name, capacity, available, price_cents)
+              VALUES (%L, %L, 'Palco', 100, 0, 150000)$sql$, :event, :sector));
 ROLLBACK TO SAVEPOINT tc;
 
 -- TC-C1-05 -----------------------------------------------------------------------------------

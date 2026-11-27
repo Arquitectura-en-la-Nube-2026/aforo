@@ -83,15 +83,26 @@ describe('C2 parseCreateReservation', () => {
     expect(err.fieldErrors).toEqual([{ field: 'body', message: 'body must be an object' }]);
   });
 
-  // DEFECT: expected a version-1 UUID to be rejected (contracts/conventions.md: IDs are UUID v4);
-  // observed it is accepted, because the UUID regex checks only the 8-4-4-4-12 hex shape, not the
-  // version nibble (4) nor the variant (8, 9, a, b).
-  it.fails('TC-C2-10 a well-formed UUID that is not version 4 (v1) is rejected', () => {
+  it('TC-C2-10 a well-formed non-v4 UUID is accepted (contract: format uuid)', () => {
+    const v1 = 'c232ab00-9414-11ec-b3c8-9f6bdeced846';
+    expect(parseCreateReservation(validBody({ eventId: v1 }))).toEqual({
+      eventId: v1,
+      sectorId: SECTOR,
+      quantity: 1,
+      buyerId: BUYER,
+    });
+  });
+
+  it('TC-C2-12 several invalid fields are reported together in one VALIDATION_ERROR', () => {
     const err = catchDomainError(() =>
-      parseCreateReservation(validBody({ eventId: 'c232ab00-9414-11ec-b3c8-9f6bdeced846' })),
+      parseCreateReservation(validBody({ eventId: 'abc', quantity: 0, extra: 'x' })),
     );
     expect(err.code).toBe('VALIDATION_ERROR');
-    expect(err.fieldErrors).toEqual([{ field: 'eventId', message: 'eventId must be a UUID' }]);
+    expect(err.fieldErrors).toEqual([
+      { field: 'eventId', message: 'eventId must be a UUID' },
+      { field: 'quantity', message: 'quantity must be an integer >= 1' },
+      { field: 'extra', message: 'unknown field' },
+    ]);
   });
 });
 
@@ -100,5 +111,10 @@ describe('C2 uuidParam', () => {
     const err = catchDomainError(() => uuidParam('reservationId', 'not-a-uuid'));
     expect(err.code).toBe('VALIDATION_ERROR');
     expect(err.fieldErrors).toEqual([{ field: 'reservationId', message: 'reservationId must be a UUID' }]);
+  });
+
+  it('TC-C2-13 a valid path parameter is returned unchanged', () => {
+    const id = '44444444-4444-4444-8444-444444444444';
+    expect(uuidParam('reservationId', id)).toBe(id);
   });
 });
