@@ -160,6 +160,22 @@ describe('C4 WebhookService.handle', () => {
     expect(warn).toHaveBeenCalledWith({ event: 'outbox_flush_failed', reason: 'pubsub down' });
   });
 
+  it.each(['APPROVED', 'DECLINED'] as const)(
+    'TC-C4-16 %s losing the inbox claim (concurrent duplicate) resolves and writes nothing',
+    async (status) => {
+      deps.inbox.claim.mockResolvedValue(false);
+
+      await expect(service.handle(notification({ status }), CORRELATION_ID)).resolves.toBeUndefined();
+
+      expect(deps.inbox.claim).toHaveBeenCalledWith(deps.tx, IDS.notification, INBOX_SOURCE);
+      expect(deps.payments.transition).not.toHaveBeenCalled();
+      expect(deps.orders.markPaid).not.toHaveBeenCalled();
+      expect(deps.outbox.add).not.toHaveBeenCalled();
+      expect(deps.publisher.flush).not.toHaveBeenCalled();
+      expect(deps.refunds.request).not.toHaveBeenCalled();
+    },
+  );
+
   // DEFECT: expected the order NOT to be marked PAID (nor OrderPaid written) when the payment is no longer
   // CREATED (e.g. already DECLINED: payments.transition -> false); observed markPaid and outbox.add are
   // called anyway, because handle ignores the result of payments.transition.
