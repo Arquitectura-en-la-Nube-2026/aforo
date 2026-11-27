@@ -7,12 +7,18 @@ It does not matter which tool (or AI) you use: follow the file and the conventio
 |---|---|---|---|
 | C1 | Cristian | Template only (TC-C1-01..03) | [c1-cristian.md](c1-cristian.md) |
 | C2 | Juan Esteban | Template only (TC-C2-01..02) | [c2-juan-esteban.md](c2-juan-esteban.md) |
-| C3 | David | **Done** (branch `quality/c3-david`) | — |
+| C3 | David | **Done — use it as the reference** | [services/queue/test/p1/c3-queue-status.test.ts](../../services/queue/test/p1/c3-queue-status.test.ts) |
 | C4 | Sergio | Template only (TC-C4-01..02) | [c4-sergio.md](c4-sergio.md) |
 | C5 | Juan José | Template only (TC-C5-01..02) | [c5-juan-jose.md](c5-juan-jose.md) |
 | C6 | Daniel | Template only (TC-C6-01..02) | [c6-daniel.md](c6-daniel.md) |
 
 **Deadline:** tests pushed and results in the report doc (team-E-p1, Google Docs) by **Fri Nov 27, 5:00 pm**.
+
+## Reference implementation
+C3 is complete: 11 tests, 80% branch coverage, mutation score 91.7% → 97.2% after analyzing the
+survivors. Read [its test file](../../services/queue/test/p1/c3-queue-status.test.ts) for test
+names, `it.each` with one ID, injected clock/randomness and strong oracles. Use its rows in
+sections 5 and 8 of the report doc as the model for reporting yours.
 
 ## Workflow (same for everyone)
 1. `git checkout main && git pull && git checkout -b quality/c<n>-<name>` (e.g. `quality/c4-sergio`).
