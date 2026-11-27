@@ -1,0 +1,161 @@
+name: p1-component-tests
+
+# Quality P1 (Software Quality course, "Component-Level Verification"): the single command that runs
+# every component suite, one job per tier, and reports a verdict per test (job log + job summary +
+# JUnit artifacts). See quality/README.md. Mutation testing (Stryker on C3 and C4, SQL mutants on C1)
+# runs only when started by hand with `mutation: true`, so a normal push stays fast.
+
+on:
+  push:
+    branches: ["quality/**"]
+  pull_request:
+    paths:
+      - "quality/**"
+      - ".github/workflows/p1-component-tests.yml"
+      - "services/inventory/**"
+      - "services/queue/**"
+      - "services/orders/**"
+      - "apps/web/**"
+      - "packages/common/**"
+      - "package.json"
+      - "package-lock.json"
+  workflow_dispatch:
+    inputs:
+      mutation:
+        description: Also run mutation testing (Stryker on C3 and C4, SQL mutants on C1)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p1-component-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  data:
+    name: data tier (C1, SQL on PostgreSQL 17)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: PostgreSQL client
+        run: |
+          command -v psql >/dev/null || { sudo apt-get update -q && sudo apt-get install -yq postgresql-client; }
+          psql --version
+          psql "$DATABASE_URL" -Atc 'SELECT version()'
+      - name: C1 suite
+        run: quality/db/run.sh
+      - name: C1 SQL mutants
+        if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.mutation }}
+        run: quality/db/run-mutants.sh
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: node quality/summary.mjs c1
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: p1-data-c1
+          path: quality/reports/c1
+          if-no-files-found: warn
+
+  logic:
+    name: logic tier (C2, C3 Vitest; C4, C5 Jest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # C2 imports DomainError from @aforo/common, which exposes dist/.
+      - run: npm run build --workspace=@aforo/common
+      - name: C2 reservation validation (Vitest)
+        run: npm run test:p1 --workspace=@aforo/inventory
+      - name: C3 queue status (Vitest)
+        if: ${{ !cancelled() }}
+        run: npm run test:p1 --workspace=@aforo/queue
+      - name: C4 payment webhook (Jest)
+        if: ${{ !cancelled() }}
+        run: npm run test:p1:c4 --workspace=@aforo/orders
+      - name: C5 circuit breaker + retry (Jest)
+        if: ${{ !cancelled() }}
+        run: npm run test:p1:c5 --workspace=@aforo/orders
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: node quality/summary.mjs c2 c3 c4 c5
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: p1-logic-c2-c5
+          path: |
+            quality/reports/c2
+            quality/reports/c3
+            quality/reports/c4
+            quality/reports/c5
+          if-no-files-found: warn
+
+  ui:
+    name: presentation tier (C6, Vitest + RTL + jsdom)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: C6 PurchaseAction (Vitest + React Testing Library)
+        run: npm run test:p1 --workspace=@aforo/web
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: node quality/summary.mjs c6
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: p1-ui-c6
+          path: quality/reports/c6
+          if-no-files-found: warn
+
+  mutation:
+    name: mutation testing (Stryker on C3 and C4)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mutation }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build --workspace=@aforo/common
+      - name: C3 Stryker (vitest runner)
+        run: npm run test:p1:mutation --workspace=@aforo/queue
+      - name: C4 Stryker (jest runner)
+        if: ${{ !cancelled() }}
+        run: npm run test:p1:mutation --workspace=@aforo/orders
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: node quality/summary.mjs c3 c4
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: p1-mutation-c3-c4
+          path: |
+            quality/reports/c3/mutation
+            quality/reports/c4/mutation
+          if-no-files-found: warn
