@@ -29,9 +29,27 @@ export function notification(overrides: Partial<PaymentNotificationDto> = {}): P
   };
 }
 
-export const paymentRow = () => ({ id: IDS.payment, orderId: IDS.order, status: 'CREATED' });
+export interface PaymentRowFake {
+  id: string;
+  orderId: string;
+  status: string;
+}
 
-export const orderRow = (overrides: Record<string, unknown> = {}) => ({
+export const paymentRow = (): PaymentRowFake => ({ id: IDS.payment, orderId: IDS.order, status: 'CREATED' });
+
+export interface OrderRowFake {
+  id: string;
+  reservationId: string;
+  eventId: string;
+  sectorId: string;
+  buyerId: string;
+  quantity: number;
+  totalCents: number;
+  status: string;
+  paidAt: Date | null;
+}
+
+export const orderRow = (overrides: Partial<OrderRowFake> = {}): OrderRowFake => ({
   id: IDS.order,
   reservationId: IDS.reservation,
   eventId: IDS.event,
@@ -40,7 +58,7 @@ export const orderRow = (overrides: Record<string, unknown> = {}) => ({
   quantity: 2,
   totalCents: 300_000,
   status: 'PENDING_PAYMENT',
-  paidAt: null as Date | null,
+  paidAt: null,
   ...overrides,
 });
 
@@ -58,11 +76,11 @@ export function makeDeps() {
     outbox: { add: jest.fn(async (_q: unknown, _topic: string, _envelope: unknown) => undefined) },
     orders: {
       findById: jest.fn(async (_id: string) => orderRow()),
-      markPaid: jest.fn(async (_q: unknown, _id: string) => orderRow({ status: 'PAID', paidAt: PAID_AT })),
+      markPaid: jest.fn(async (_q: unknown, _id: string): Promise<OrderRowFake | null> => orderRow({ status: 'PAID', paidAt: PAID_AT })),
       markRefundPending: jest.fn(async (_q: unknown, _id: string) => true),
     },
     payments: {
-      findById: jest.fn(async (_id: string) => paymentRow() as ReturnType<typeof paymentRow> | null),
+      findById: jest.fn(async (_id: string): Promise<PaymentRowFake | null> => paymentRow()),
       transition: jest.fn(async (_q: unknown, _id: string, _from: string, _to: string) => true),
     },
     inventory: {
