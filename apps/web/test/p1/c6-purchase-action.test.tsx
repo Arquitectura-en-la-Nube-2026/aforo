@@ -59,7 +59,7 @@ describe('C6 PurchaseAction', () => {
     expect(screen.queryByRole('link')).toBeNull();
   });
 
-  it('TC-C6-02 OPEN + ready + session + no pass shows the join-queue link to /events/<id>/queue', () => {
+  it('TC-C6-02 OPEN + ready + session + no pass shows the join-queue link to /events/{id}/queue', () => {
     given({ session: SESSION, ready: true, pass: null });
 
     render(<PurchaseAction eventId={EVENT} saleState="OPEN" salesOpensAt={OPENS_AT} />);
@@ -88,7 +88,7 @@ describe('C6 PurchaseAction', () => {
     expect(screen.queryByRole('link')).toBeNull();
   });
 
-  it('TC-C6-05 OPEN + ready + no session shows the login link to /login?next=%2Fevents%2F<id>', () => {
+  it('TC-C6-05 OPEN + ready + no session shows the login link to /login?next=%2Fevents%2F{id}', () => {
     given({ session: null, ready: true });
 
     render(<PurchaseAction eventId={EVENT} saleState="OPEN" salesOpensAt={OPENS_AT} />);
@@ -97,7 +97,7 @@ describe('C6 PurchaseAction', () => {
     expect(link.getAttribute('href')).toBe(`/login?next=%2Fevents%2F${EVENT}`);
   });
 
-  it('TC-C6-06 OPEN + session + live pass shows the continue-buying link to /events/<id>/buy', () => {
+  it('TC-C6-06 OPEN + session + live pass shows the continue-buying link to /events/{id}/buy', () => {
     given({ session: SESSION, ready: true, pass: PASS });
 
     render(<PurchaseAction eventId={EVENT} saleState="OPEN" salesOpensAt={OPENS_AT} />);
@@ -107,8 +107,8 @@ describe('C6 PurchaseAction', () => {
     expect(getPass).toHaveBeenCalledWith(EVENT);
   });
 
-  // DEFECT: expected the join-queue link to /events/<id>/queue once buyer B (no pass) replaces
-  // buyer A on the open page; observed the continue-buying link to /events/<id>/buy, because
+  // DEFECT: expected the join-queue link to /events/{id}/queue once buyer B (no pass) replaces
+  // buyer A on the open page; observed the continue-buying link to /events/{id}/buy, because
   // hasPass is only recomputed when eventId changes (useEffect deps [eventId]), not the session.
   it.fails(
     'TC-C6-08 when the session changes to another buyer without a pass, the link goes back to the queue',
