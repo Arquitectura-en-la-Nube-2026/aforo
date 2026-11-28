@@ -97,7 +97,7 @@ and prints the score. To add a mutant: copy the migration, change one operator/c
 document it in the header.
 
 How the SQL runner works: `run.sh` loads `lib/assert.sql` (schema `qa`: `qa.ok`, `qa.assert_equals`,
-`qa.assert_raises(id, desc, sql, sqlstate)`, `qa.assert_lives`, `qa.summary`), then runs each test file
+`qa.assert_raises(id, desc, sql, sqlstate)`, `qa.assert_violates(id, desc, sql, constraint)` (checks the violated constraint's name), `qa.assert_lives`, `qa.summary`), then runs each test file
 as `BEGIN; qa.reset(); <file>; qa.summary(); ROLLBACK`. Each case sits between `SAVEPOINT tc` and
 `ROLLBACK TO SAVEPOINT tc`. Pass/fail counters are sequences (not rolled back by a savepoint), so
 `qa.summary()` sees every verdict and raises if any failed; `run.sh` also counts the `ok` / `not ok`
