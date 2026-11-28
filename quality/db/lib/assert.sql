@@ -75,6 +75,31 @@ BEGIN
 END;
 $$;
 
+-- Passes only when `sql` raises a constraint error (e.g. 23514 check_violation) whose violated
+-- constraint is `expected_constraint` (CONSTRAINT_NAME from GET STACKED DIAGNOSTICS).
+-- assert_raises compares the SQLSTATE only, so it cannot tell which CHECK of a table fired.
+CREATE FUNCTION qa.assert_violates(test_id text, description text, sql text, expected_constraint text)
+RETURNS boolean LANGUAGE plpgsql AS $$
+DECLARE
+  got_constraint text;
+  got_state text;
+  got_message text;
+BEGIN
+  BEGIN
+    EXECUTE sql;
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS got_constraint = CONSTRAINT_NAME,
+                            got_state = RETURNED_SQLSTATE,
+                            got_message = MESSAGE_TEXT;
+    RETURN qa.ok(test_id, description, got_constraint = expected_constraint,
+                 format('expected constraint %s, got %s (SQLSTATE %s): %s', expected_constraint,
+                        coalesce(nullif(got_constraint, ''), 'none'), got_state, got_message));
+  END;
+  RETURN qa.ok(test_id, description, false,
+               format('expected a violation of %s, the statement succeeded', expected_constraint));
+END;
+$$;
+
 -- Passes when `sql` runs without error. Its effects stay (use a savepoint around the case).
 CREATE FUNCTION qa.assert_lives(test_id text, description text, sql text)
 RETURNS boolean LANGUAGE plpgsql AS $$

@@ -158,3 +158,163 @@ SELECT qa.assert_lives('TC-C1-13', 'the transition guard allows CONFIRMED -> CON
 SELECT qa.assert_equals('TC-C1-13', 'the reservation is still CONFIRMED',
   'CONFIRMED'::text, (SELECT status FROM reservation WHERE id = :resv));
 ROLLBACK TO SAVEPOINT tc;
+
+-- TC-C1-14 -----------------------------------------------------------------------------------
+-- REDUNDANT RULE: capacity >= 0 is implied by 0 <= available <= capacity (the unnamed table-level
+-- CHECK, which PostgreSQL names sector_availability_check). With capacity = -1 no value of available
+-- satisfies it, so no row violates capacity_check alone: the rule cannot be exercised in isolation.
+-- This row violates both; PostgreSQL evaluates CHECKs in name order and
+-- sector_availability_capacity_check sorts first, so that is the constraint that fires.
+SAVEPOINT tc;
+SELECT qa.assert_violates('TC-C1-14', 'sector_availability rejects capacity = -1 (capacity_check; the row also violates sector_availability_check)',
+  format($sql$INSERT INTO sector_availability (event_id, sector_id, name, capacity, available, price_cents)
+              VALUES (%L, %L, 'Palco', -1, 0, 150000)$sql$, :event, :sector),
+  'sector_availability_capacity_check');
+ROLLBACK TO SAVEPOINT tc;
+
+-- TC-C1-15 -----------------------------------------------------------------------------------
+SAVEPOINT tc;
+SELECT qa.assert_violates('TC-C1-15', 'sector_availability rejects price_cents = -1 (price_cents_check)',
+  format($sql$INSERT INTO sector_availability (event_id, sector_id, name, capacity, available, price_cents)
+              VALUES (%L, %L, 'Palco', 100, 100, -1)$sql$, :event, :sector),
+  'sector_availability_price_cents_check');
+ROLLBACK TO SAVEPOINT tc;
+
+-- TC-C1-16 -----------------------------------------------------------------------------------
+SAVEPOINT tc;
+SELECT qa.assert_violates('TC-C1-16', 'sector_availability rejects currency = ''USD'' (currency_check)',
+  format($sql$INSERT INTO sector_availability (event_id, sector_id, name, capacity, available, price_cents, currency)
+              VALUES (%L, %L, 'Palco', 100, 100, 150000, 'USD')$sql$, :event, :sector),
+  'sector_availability_currency_check');
+ROLLBACK TO SAVEPOINT tc;
+
+-- TC-C1-17 -----------------------------------------------------------------------------------
+SAVEPOINT tc;
+INSERT INTO sector_availability (event_id, sector_id, name, capacity, available, price_cents)
+VALUES (:event, :sector, 'Palco', 100, 100, 150000);
+
+SELECT qa.assert_violates('TC-C1-17', 'reservation rejects quantity = 0 (total 0; quantity_check)',
+  format($sql$INSERT INTO reservation (id, event_id, sector_id, buyer_id, quantity, unit_price_cents,
+                                       total_cents, status, expires_at, created_at, updated_at)
+              VALUES (%L, %L, %L, %L, 0, 150000, 0,
+                      'ACTIVE', '2026-10-01T15:10:00Z', '2026-10-01T15:00:00Z', '2026-10-01T15:00:00Z')$sql$,
+         :resv, :event, :sector, :buyer),
+  'reservation_quantity_check');
+ROLLBACK TO SAVEPOINT tc;
+
+-- TC-C1-18 -----------------------------------------------------------------------------------
+SAVEPOINT tc;
+INSERT INTO sector_availability (event_id, sector_id, name, capacity, available, price_cents)
+VALUES (:event, :sector, 'Palco', 100, 100, 150000);
+
+SELECT qa.assert_violates('TC-C1-18', 'reservation rejects unit_price_cents = -1 (quantity 1, total -1; unit_price_cents_check)',
+  format($sql$INSERT INTO reservation (id, event_id, sector_id, buyer_id, quantity, unit_price_cents,
+                                       total_cents, status, expires_at, created_at, updated_at)
+              VALUES (%L, %L, %L, %L, 1, -1, -1,
+                      'ACTIVE', '2026-10-01T15:10:00Z', '2026-10-01T15:00:00Z', '2026-10-01T15:00:00Z')$sql$,
+         :resv, :event, :sector, :buyer),
+  'reservation_unit_price_cents_check');
+ROLLBACK TO SAVEPOINT tc;
+
+-- TC-C1-19 -----------------------------------------------------------------------------------
+SAVEPOINT tc;
+INSERT INTO sector_availability (event_id, sector_id, name, capacity, available, price_cents)
+VALUES (:event, :sector, 'Palco', 100, 100, 150000);
+
+SELECT qa.assert_violates('TC-C1-19', 'reservation rejects currency = ''USD'' (currency_check)',
+  format($sql$INSERT INTO reservation (id, event_id, sector_id, buyer_id, quantity, unit_price_cents,
+                                       total_cents, currency, status, expires_at, created_at, updated_at)
+              VALUES (%L, %L, %L, %L, 2, 150000, 300000, 'USD',
+                      'ACTIVE', '2026-10-01T15:10:00Z', '2026-10-01T15:00:00Z', '2026-10-01T15:00:00Z')$sql$,
+         :resv, :event, :sector, :buyer),
+  'reservation_currency_check');
+ROLLBACK TO SAVEPOINT tc;
+
+-- TC-C1-20 -----------------------------------------------------------------------------------
+SAVEPOINT tc;
+INSERT INTO sector_availability (event_id, sector_id, name, capacity, available, price_cents)
+VALUES (:event, :sector, 'Palco', 100, 100, 150000);
+
+SELECT qa.assert_violates('TC-C1-20', 'reservation rejects status = ''PENDING'' (status_check)',
+  format($sql$INSERT INTO reservation (id, event_id, sector_id, buyer_id, quantity, unit_price_cents,
+                                       total_cents, status, expires_at, created_at, updated_at)
+              VALUES (%L, %L, %L, %L, 2, 150000, 300000,
+                      'PENDING', '2026-10-01T15:10:00Z', '2026-10-01T15:00:00Z', '2026-10-01T15:00:00Z')$sql$,
+         :resv, :event, :sector, :buyer),
+  'reservation_status_check');
+ROLLBACK TO SAVEPOINT tc;
+
+-- TC-C1-21 -----------------------------------------------------------------------------------
+-- Rest of the terminal-exit matrix (CONFIRMED -> ACTIVE is TC-C1-03): one reservation per terminal
+-- state, different buyers; each UPDATE runs in its own subtransaction inside assert_raises.
+SAVEPOINT tc;
+INSERT INTO sector_availability (event_id, sector_id, name, capacity, available, price_cents)
+VALUES (:event, :sector, 'Palco', 100, 94, 150000);
+INSERT INTO reservation (id, event_id, sector_id, buyer_id, quantity, unit_price_cents, total_cents,
+                         status, expires_at, created_at, updated_at)
+VALUES (:resv,  :event, :sector, :buyer,  2, 150000, 300000,
+        'CONFIRMED', '2026-10-01T15:10:00Z', '2026-10-01T15:00:00Z', '2026-10-01T15:05:00Z'),
+       (:resv2, :event, :sector, :buyer2, 2, 150000, 300000,
+        'EXPIRED',   '2026-10-01T15:10:00Z', '2026-10-01T15:00:00Z', '2026-10-01T15:10:00Z'),
+       (:resv3, :event, :sector, :buyer3, 2, 150000, 300000,
+        'RELEASED',  '2026-10-01T15:10:00Z', '2026-10-01T15:00:00Z', '2026-10-01T15:06:00Z');
+
+SELECT qa.assert_raises('TC-C1-21', 'the transition guard rejects CONFIRMED -> EXPIRED (raise_exception)',
+  format($sql$UPDATE reservation SET status = 'EXPIRED' WHERE id = %L$sql$, :resv), 'P0001');
+SELECT qa.assert_raises('TC-C1-21', 'the transition guard rejects CONFIRMED -> RELEASED (raise_exception)',
+  format($sql$UPDATE reservation SET status = 'RELEASED' WHERE id = %L$sql$, :resv), 'P0001');
+SELECT qa.assert_raises('TC-C1-21', 'the transition guard rejects EXPIRED -> ACTIVE (raise_exception)',
+  format($sql$UPDATE reservation SET status = 'ACTIVE' WHERE id = %L$sql$, :resv2), 'P0001');
+SELECT qa.assert_raises('TC-C1-21', 'the transition guard rejects EXPIRED -> CONFIRMED (raise_exception)',
+  format($sql$UPDATE reservation SET status = 'CONFIRMED' WHERE id = %L$sql$, :resv2), 'P0001');
+SELECT qa.assert_raises('TC-C1-21', 'the transition guard rejects EXPIRED -> RELEASED (raise_exception)',
+  format($sql$UPDATE reservation SET status = 'RELEASED' WHERE id = %L$sql$, :resv2), 'P0001');
+SELECT qa.assert_raises('TC-C1-21', 'the transition guard rejects RELEASED -> ACTIVE (raise_exception)',
+  format($sql$UPDATE reservation SET status = 'ACTIVE' WHERE id = %L$sql$, :resv3), 'P0001');
+SELECT qa.assert_raises('TC-C1-21', 'the transition guard rejects RELEASED -> CONFIRMED (raise_exception)',
+  format($sql$UPDATE reservation SET status = 'CONFIRMED' WHERE id = %L$sql$, :resv3), 'P0001');
+SELECT qa.assert_raises('TC-C1-21', 'the transition guard rejects RELEASED -> EXPIRED (raise_exception)',
+  format($sql$UPDATE reservation SET status = 'EXPIRED' WHERE id = %L$sql$, :resv3), 'P0001');
+ROLLBACK TO SAVEPOINT tc;
+
+-- TC-C1-22 -----------------------------------------------------------------------------------
+-- Same-status updates (CONFIRMED -> CONFIRMED is TC-C1-13).
+SAVEPOINT tc;
+INSERT INTO sector_availability (event_id, sector_id, name, capacity, available, price_cents)
+VALUES (:event, :sector, 'Palco', 100, 94, 150000);
+INSERT INTO reservation (id, event_id, sector_id, buyer_id, quantity, unit_price_cents, total_cents,
+                         status, expires_at, created_at, updated_at)
+VALUES (:resv,  :event, :sector, :buyer,  2, 150000, 300000,
+        'ACTIVE',   '2026-10-01T15:10:00Z', '2026-10-01T15:00:00Z', '2026-10-01T15:00:00Z'),
+       (:resv2, :event, :sector, :buyer2, 2, 150000, 300000,
+        'EXPIRED',  '2026-10-01T15:10:00Z', '2026-10-01T15:00:00Z', '2026-10-01T15:10:00Z'),
+       (:resv3, :event, :sector, :buyer3, 2, 150000, 300000,
+        'RELEASED', '2026-10-01T15:10:00Z', '2026-10-01T15:00:00Z', '2026-10-01T15:06:00Z');
+
+SELECT qa.assert_lives('TC-C1-22', 'the transition guard allows ACTIVE -> ACTIVE (same status)',
+  format($sql$UPDATE reservation SET status = 'ACTIVE', updated_at = '2026-10-01T15:01:00Z'
+              WHERE id = %L$sql$, :resv));
+SELECT qa.assert_lives('TC-C1-22', 'the transition guard allows EXPIRED -> EXPIRED (same status)',
+  format($sql$UPDATE reservation SET status = 'EXPIRED', updated_at = '2026-10-01T15:11:00Z'
+              WHERE id = %L$sql$, :resv2));
+SELECT qa.assert_lives('TC-C1-22', 'the transition guard allows RELEASED -> RELEASED (same status)',
+  format($sql$UPDATE reservation SET status = 'RELEASED', updated_at = '2026-10-01T15:07:00Z'
+              WHERE id = %L$sql$, :resv3));
+ROLLBACK TO SAVEPOINT tc;
+
+-- TC-C1-23 -----------------------------------------------------------------------------------
+SAVEPOINT tc;
+INSERT INTO sector_availability (event_id, sector_id, name, capacity, available, price_cents)
+VALUES (:event, :sector, 'Palco', 100, 97, 150000);
+INSERT INTO reservation (id, event_id, sector_id, buyer_id, quantity, unit_price_cents, total_cents,
+                         status, expires_at, created_at, updated_at)
+VALUES (:resv, :event, :sector, :buyer, 2, 150000, 300000,
+        'CONFIRMED', '2026-10-01T15:10:00Z', '2026-10-01T15:00:00Z', '2026-10-01T15:05:00Z');
+
+SELECT qa.assert_lives('TC-C1-23', 'reservation_one_active accepts a new ACTIVE reservation when the buyer''s other one for the event is CONFIRMED',
+  format($sql$INSERT INTO reservation (id, event_id, sector_id, buyer_id, quantity, unit_price_cents,
+                                       total_cents, status, expires_at, created_at, updated_at)
+              VALUES (%L, %L, %L, %L, 1, 150000, 150000,
+                      'ACTIVE', '2026-10-01T15:20:00Z', '2026-10-01T15:10:00Z', '2026-10-01T15:10:00Z')$sql$,
+         :resv2, :event, :sector, :buyer));
+ROLLBACK TO SAVEPOINT tc;
